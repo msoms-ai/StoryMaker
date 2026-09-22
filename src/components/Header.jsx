@@ -23,9 +23,14 @@ export default function Header({ currentView, setCurrentView }) {
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white font-story flex items-center gap-1.5">
-              {(typeof settings?.siteName === 'object' && settings.siteName !== null
-                ? (settings.siteName[lang] || settings.siteName.ar || settings.siteName.en)
-                : settings?.siteName) || t('appName')}
+              <span className="hidden sm:inline">
+                {(typeof settings?.siteName === 'object' && settings.siteName !== null
+                  ? (settings.siteName[lang] || settings.siteName.ar || settings.siteName.en)
+                  : settings?.siteName) || t('appName')}
+              </span>
+              <span className="sm:hidden">
+                {lang === 'ar' ? 'قصص' : 'Stories'}
+              </span>
               <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
