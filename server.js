@@ -1289,15 +1289,53 @@ app.post('/api/stories/plan', async (req, res) => {
 app.post('/api/stories/start-generation', async (req, res) => {
   const { title } = req.body;
   const currentStoryId = (Date.now() % 100000).toString().padStart(4, '0');
-  const sanitizedTitle = (title || 'New_Story').replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, '_').substring(0, 30);
-  const folderName = `[ID#${currentStoryId}]_${sanitizedTitle}`;
+  let sanitizedTitle = (title || 'New_Story').replace(/[^a-zA-Z0-9_\u0600-\u06FF\s-]/g, '').trim().replace(/\s+/g, '_');
+  let folderName = sanitizedTitle;
+  let storyFolderPath = path.join(STORIES_DIR, folderName);
 
-  const storyFolderPath = path.join(STORIES_DIR, folderName);
+  // Ensure uniqueness if a folder with the exact same name already exists
+  let counter = 1;
+  while (fs.existsSync(storyFolderPath)) {
+    folderName = `${sanitizedTitle}_${counter}`;
+    storyFolderPath = path.join(STORIES_DIR, folderName);
+    counter++;
+  }
+
   const imgDir = path.join(storyFolderPath, 'story_images');
   const voiceDir = path.join(storyFolderPath, 'story_voice');
 
   fs.mkdirSync(imgDir, { recursive: true });
   fs.mkdirSync(voiceDir, { recursive: true });
+
+  // Generate an AI-themed access restricted page for directory protection
+  const restrictedHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Access Restricted - Qisas AI</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #020617; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; }
+    .card { background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(30, 41, 59, 0.8); padding: 3rem; border-radius: 1.5rem; max-width: 90%; width: 450px; }
+    h1 { font-size: 2rem; font-weight: 900; background: linear-gradient(to right, #f59e0b, #f43f5e, #4f46e5); -webkit-background-clip: text; color: transparent; margin: 1rem 0; }
+    p { color: #94a3b8; line-height: 1.6; margin-bottom: 2rem; font-weight: 500; }
+    .btn { display: inline-block; padding: 0.75rem 1.5rem; background: #f59e0b; color: white; text-decoration: none; border-radius: 0.75rem; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size: 4rem;">🛡️</div>
+    <h1>Access Restricted</h1>
+    <p>This directory is protected by Qisas AI magic. Direct browsing of story assets is not permitted.</p>
+    <a href="/" class="btn">Return to Safety</a>
+  </div>
+</body>
+</html>`;
+
+  // Write to all created folders to prevent listing
+  fs.writeFileSync(path.join(storyFolderPath, 'index.html'), restrictedHtml);
+  fs.writeFileSync(path.join(imgDir, 'index.html'), restrictedHtml);
+  fs.writeFileSync(path.join(voiceDir, 'index.html'), restrictedHtml);
 
   res.json({
     success: true,
