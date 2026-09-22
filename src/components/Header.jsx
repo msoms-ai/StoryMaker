@@ -37,12 +37,12 @@ export default function Header({ currentView, setCurrentView }) {
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
           
           {/* Top Right "Browse Stories" Link */}
           <button
             onClick={() => setCurrentView('categories')}
-            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
               currentView === 'categories'
                 ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400'
@@ -55,7 +55,7 @@ export default function Header({ currentView, setCurrentView }) {
           {/* Pricing Packages Link */}
           <button
             onClick={() => setCurrentView('packages')}
-            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
               currentView === 'packages'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400'
@@ -68,17 +68,17 @@ export default function Header({ currentView, setCurrentView }) {
           {/* Language Switcher */}
           <button
             onClick={toggleLanguage}
-            className="px-2.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors flex items-center gap-1"
+            className="px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors flex items-center gap-1"
             title="Toggle Language"
           >
             <Globe className="w-3.5 h-3.5 text-indigo-500" />
-            <span>{lang === 'ar' ? 'EN' : 'عربي'}</span>
+            <span className="hidden sm:inline">{lang === 'ar' ? 'EN' : 'عربي'}</span>
           </button>
 
           {/* Theme Switcher */}
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
+            className="p-1.5 sm:p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
             title="Toggle Theme"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
@@ -89,7 +89,7 @@ export default function Header({ currentView, setCurrentView }) {
             <div className={`relative ${lang === 'ar' ? 'font-arabic' : ''}`}>
               <button
                 onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                className={`flex items-center gap-2 p-1.5 pr-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all ${lang === 'ar' ? 'text-right' : 'text-left'}`}
+                className={`flex items-center gap-1 sm:gap-2 p-1 sm:p-1.5 pr-2 sm:pr-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all ${lang === 'ar' ? 'text-right' : 'text-left'}`}
               >
                 <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-tr from-amber-500 to-indigo-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-sm">
                   {user.avatarUrl ? (

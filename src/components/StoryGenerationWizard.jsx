@@ -410,7 +410,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
             {lang === 'ar' ? 'الخطوة 3: تحديد مصدر نص القصة' : 'Step 3: Choose Story Text Source'}
           </h3>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               onClick={() => { setInputMethod('paste'); setPlanData(null); }}
               className={`p-4 rounded-2xl border-2 font-bold text-sm flex flex-col items-center gap-2 ${
@@ -630,7 +630,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                   className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-black text-sm sm:text-base transition-all shadow-lg flex items-center gap-2"
                 >
                   <Check className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span>{lang === 'ar' ? 'تأكيد الخطة وتوليد كافة الصور والأصوات بالذكاء الاصطناعي 🚀' : 'Confirm Plan & Generate AI Art & Voice 🚀'}</span>
+                  <span className="hidden sm:inline">{lang === 'ar' ? 'تأكيد الخطة وتوليد كافة الصور والأصوات بالذكاء الاصطناعي 🚀' : 'Confirm Plan & Generate AI Art & Voice 🚀'}</span>
+                  <span className="sm:hidden">{lang === 'ar' ? 'تأكيد وبدء التوليد 🚀' : 'Confirm & Generate 🚀'}</span>
                 </button>
               </div>
             </div>

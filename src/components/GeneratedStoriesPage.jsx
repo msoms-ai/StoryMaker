@@ -93,56 +93,56 @@ export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryF
         </button>
       </div>
 
-      {/* Category Pills Filter Bar */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 scrollbar-none">
-        {/* All Stories Pill */}
-        <button
-          type="button"
-          onClick={() => setActiveFilter('ALL')}
-          className={`px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
-            activeFilter === 'ALL'
-              ? 'bg-amber-500 text-white shadow-amber-500/30 scale-105 ring-2 ring-amber-400'
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>{lang === 'ar' ? 'جميع القصص' : 'All Stories'}</span>
-          <span className={`text-[11px] px-2 py-0.5 rounded-full font-mono ${
-            activeFilter === 'ALL' ? 'bg-black/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-          }`}>
-            {totalPublishedCount}
-          </span>
-        </button>
+    {/* Category Pills Filter Bar */}
+    <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 scrollbar-none">
+      {/* All Stories Pill */}
+      <button
+        type="button"
+        onClick={() => setActiveFilter('ALL')}
+        className={`shrink-0 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
+          activeFilter === 'ALL'
+            ? 'bg-amber-500 text-white shadow-amber-500/30 scale-105 ring-2 ring-amber-400'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+        }`}
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+        <span>{lang === 'ar' ? 'جميع القصص' : 'All Stories'}</span>
+        <span className={`text-[11px] px-2 py-0.5 rounded-full font-mono ${
+          activeFilter === 'ALL' ? 'bg-black/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+        }`}>
+          {totalPublishedCount}
+        </span>
+      </button>
 
-        {/* Categories Pills */}
-        {activeCategories.map((cat) => {
-          const CatIcon = getCategoryIconComponent(cat.icon);
-          const isSelected = activeFilter === cat.id;
-          const catName = cat.name?.[lang] || cat.name?.ar || cat.name?.en || cat.name || cat.id;
-          const pubCount = cat.publishedStoriesCount !== undefined ? cat.publishedStoriesCount : (cat.storiesCount || 0);
+      {/* Categories Pills */}
+      {activeCategories.map((cat) => {
+        const CatIcon = getCategoryIconComponent(cat.icon);
+        const isSelected = activeFilter === cat.id;
+        const catName = cat.name?.[lang] || cat.name?.ar || cat.name?.en || cat.name || cat.id;
+        const pubCount = cat.publishedStoriesCount !== undefined ? cat.publishedStoriesCount : (cat.storiesCount || 0);
 
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setActiveFilter(cat.id)}
-              className={`px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
-                isSelected
-                  ? 'bg-amber-500 text-white shadow-amber-500/30 scale-105 ring-2 ring-amber-400'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              <CatIcon className="w-3.5 h-3.5" />
-              <span>{catName}</span>
-              <span className={`text-[11px] px-2 py-0.5 rounded-full font-mono ${
-                isSelected ? 'bg-black/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-              }`}>
-                {pubCount}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+        return (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => setActiveFilter(cat.id)}
+            className={`shrink-0 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
+              isSelected
+                ? 'bg-amber-500 text-white shadow-amber-500/30 scale-105 ring-2 ring-amber-400'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <CatIcon className="w-3.5 h-3.5" />
+            <span>{catName}</span>
+            <span className={`text-[11px] px-2 py-0.5 rounded-full font-mono ${
+              isSelected ? 'bg-black/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+            }`}>
+              {pubCount}
+            </span>
+          </button>
+        );
+      })}
+    </div>
 
       {loading ? (
         <div className="p-12 text-center">
