@@ -21,6 +21,7 @@ function pcmToWavBuffer(pcmBuffer, sampleRate = 24000, numChannels = 1, bitsPerS
 
   wavHeader.write('fmt ', 12);
   wavHeader.writeUInt32LE(16, 16);
+  wavHeader.writeUInt16LE(1, 20); // AudioFormat = 1 (PCM)
   wavHeader.writeUInt16LE(numChannels, 22);
   wavHeader.writeUInt32LE(sampleRate, 24);
   wavHeader.writeUInt32LE(byteRate, 28);
