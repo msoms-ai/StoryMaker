@@ -60,18 +60,6 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
       audio.onplaying = () => setIsPlaying(true);
       audio.onpause = () => setIsPlaying(false);
 
-      audio.ontimeupdate = () => {
-        const cur = audio.currentTime;
-        const dur = audio.duration || duration;
-        setCurrentTime(cur);
-
-        if (dur && dur > 0 && words.length > 0) {
-          const ratio = Math.min(cur / dur, 0.999);
-          const wordIdx = Math.floor(ratio * words.length);
-          setActiveWordIndex(wordIdx);
-        }
-      };
-
       audio.onended = () => {
         setIsPlaying(false);
         setActiveWordIndex(-1);
@@ -84,6 +72,38 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
       stopAudio();
     };
   }, [audioUrl, text]);
+
+  // Use requestAnimationFrame for buttery smooth UI updates (bypasses mobile throttled ontimeupdate)
+  useEffect(() => {
+    let animationFrameId;
+
+    const updateLoop = () => {
+      if (audioRef.current && isPlaying) {
+        const audio = audioRef.current;
+        const cur = audio.currentTime;
+        setCurrentTime(cur);
+
+        // Safari often returns Infinity for audio.duration. Safe fallback:
+        let dur = (audio.duration && isFinite(audio.duration)) ? audio.duration : duration;
+        if (!dur || dur <= 0) dur = Math.max(1, words.length / 2.5); // Fallback estimate
+
+        if (words.length > 0) {
+          const ratio = Math.min(cur / dur, 0.999);
+          const wordIdx = Math.floor(ratio * words.length);
+          setActiveWordIndex(wordIdx);
+        }
+      }
+      animationFrameId = requestAnimationFrame(updateLoop);
+    };
+
+    if (isPlaying) {
+      animationFrameId = requestAnimationFrame(updateLoop);
+    }
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [isPlaying, duration, words.length]);
 
   const stopAudio = () => {
     if (audioRef.current) {
