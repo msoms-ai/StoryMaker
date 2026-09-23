@@ -9,7 +9,11 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setLoading(false);
+      setError('Unknown Account');
+      return;
+    }
 
     const fetchProfile = async () => {
       try {

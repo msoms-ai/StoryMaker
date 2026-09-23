@@ -239,13 +239,18 @@ export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryF
                     <div 
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (setViewingUserId) setViewingUserId(story.authorId || story.userId);
-                        setCurrentView('publicProfile');
+                        const id = story.authorId || story.userId;
+                        if (id && setViewingUserId) {
+                          setViewingUserId(id);
+                          setCurrentView('publicProfile');
+                        }
                       }}
-                      className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-400 font-bold z-10 relative cursor-pointer hover:text-amber-500 transition-colors"
+                      className={`flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-400 font-bold z-10 relative ${
+                        (story.authorId || story.userId) ? 'cursor-pointer hover:text-amber-500 transition-colors' : ''
+                      }`}
                     >
                       <User className="w-4 h-4 text-slate-400" />
-                      <span className="hover:underline">
+                      <span className={(story.authorId || story.userId) ? 'hover:underline' : ''}>
                         {story.authorName}
                       </span>
                     </div>
