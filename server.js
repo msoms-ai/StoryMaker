@@ -1290,7 +1290,7 @@ app.post('/api/stories/start-generation', async (req, res) => {
   const { title } = req.body;
   const currentStoryId = (Date.now() % 100000).toString().padStart(4, '0');
   let sanitizedTitle = (title || 'New_Story').replace(/[^a-zA-Z0-9_\u0600-\u06FF\s-]/g, '').trim().replace(/\s+/g, '_');
-  let folderName = sanitizedTitle;
+  let folderName = `[ID#${currentStoryId}]_${sanitizedTitle}`;
   let storyFolderPath = path.join(STORIES_DIR, folderName);
 
   // Ensure uniqueness if a folder with the exact same name already exists
