@@ -78,7 +78,7 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
     let animationFrameId;
 
     const updateLoop = () => {
-      if (audioRef.current && isPlaying) {
+      if (audioRef.current && isPlaying && !audioRef.current.paused) {
         const audio = audioRef.current;
         const cur = audio.currentTime;
         setCurrentTime(cur);
