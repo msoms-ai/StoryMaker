@@ -49,7 +49,7 @@ export async function generateAndSaveSlideVoice({
     return null;
   }
 
-  const MODELS = ['gemini-2.5-pro', 'gemini-2.5-flash'];
+  const MODELS = ['gemini-2.5-flash-preview-tts', 'gemini-3.1-flash-tts-preview'];
   let lastError = null;
 
   for (const model of MODELS) {
