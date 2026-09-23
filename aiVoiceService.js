@@ -3,10 +3,17 @@ import path from 'path';
 import dotenv from 'dotenv';
 import textToSpeech from '@google-cloud/text-to-speech';
 
+import { fileURLToPath } from 'url';
+
 dotenv.config();
 
-// Automatically picks up GOOGLE_APPLICATION_CREDENTIALS from .env
-const client = new textToSpeech.TextToSpeechClient();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Use explicit absolute path to ensure Plesk Passenger finds the credentials
+const client = new textToSpeech.TextToSpeechClient({
+  keyFilename: path.join(__dirname, 'google-credentials.json')
+});
 
 /**
  * Generate Voice Narration Audio exclusively using Google Cloud Neural2 TTS API
