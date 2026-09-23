@@ -1,12 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import ffmpegStatic from 'ffmpeg-static';
-import ffmpeg from 'fluent-ffmpeg';
-import { Readable } from 'stream';
 
 dotenv.config();
-ffmpeg.setFfmpegPath(ffmpegStatic);
 
 /**
  * Convert PCM (L16, 24000Hz, Mono) audio buffer from Gemini TTS API into a standard WAV file buffer
@@ -19,12 +15,10 @@ function pcmToWavBuffer(pcmBuffer, sampleRate = 24000, numChannels = 1, bitsPerS
 
   const wavHeader = Buffer.alloc(44);
 
-  // RIFF Header
   wavHeader.write('RIFF', 0);
   wavHeader.writeUInt32LE(chunkSize, 4);
   wavHeader.write('WAVE', 8);
 
-  // Subchunk 1: fmt
   wavHeader.write('fmt ', 12);
   wavHeader.writeUInt32LE(16, 16);
   wavHeader.writeUInt16LE(numChannels, 22);
@@ -33,7 +27,6 @@ function pcmToWavBuffer(pcmBuffer, sampleRate = 24000, numChannels = 1, bitsPerS
   wavHeader.writeUInt16LE(blockAlign, 32);
   wavHeader.writeUInt16LE(bitsPerSample, 34);
 
-  // Subchunk 2: data
   wavHeader.write('data', 36);
   wavHeader.writeUInt32LE(dataSize, 40);
 
@@ -92,22 +85,11 @@ export async function generateAndSaveSlideVoice({
           if (p.inlineData?.data) {
             const rawPcmBuffer = Buffer.from(p.inlineData.data, 'base64');
             const wavBuffer = pcmToWavBuffer(rawPcmBuffer, 24000, 1, 16);
-            const fileName = `slide_${slideIndex + 1}.mp3`;
+            const fileName = `slide_${slideIndex + 1}.wav`;
             const filePath = path.join(outputDir, fileName);
             
-            await new Promise((resolve, reject) => {
-              const stream = new Readable();
-              stream.push(wavBuffer);
-              stream.push(null);
-              ffmpeg(stream)
-                .audioCodec('libmp3lame')
-                .audioBitrate('48k')
-                .save(filePath)
-                .on('end', () => resolve())
-                .on('error', (err) => reject(err));
-            });
-
-            console.log(`[AI Voice Service] Successfully saved compressed Gemini AI Voiceover: ${fileName}`);
+            fs.writeFileSync(filePath, wavBuffer);
+            console.log(`[AI Voice Service] Successfully saved Gemini AI Voiceover: ${fileName} (${wavBuffer.length} bytes)`);
             return fileName;
           }
         }
@@ -122,20 +104,9 @@ export async function generateAndSaveSlideVoice({
     }
   }
 
-  // If Gemini API voice returns audio file, save fallback audio container
-  console.log(`[AI Voice Service] Saving audio container for Slide ${slideIndex + 1}.`);
-  const fileName = `slide_${slideIndex + 1}.mp3`;
+  console.log(`[AI Voice Service] Saving fallback audio container for Slide ${slideIndex + 1}.`);
+  const fileName = `slide_${slideIndex + 1}.wav`;
   const emptyWav = pcmToWavBuffer(Buffer.alloc(24000), 24000, 1, 16);
-  await new Promise((resolve) => {
-    const stream = new Readable();
-    stream.push(emptyWav);
-    stream.push(null);
-    ffmpeg(stream)
-      .audioCodec('libmp3lame')
-      .audioBitrate('48k')
-      .save(path.join(outputDir, fileName))
-      .on('end', () => resolve())
-      .on('error', () => resolve());
-  });
+  fs.writeFileSync(path.join(outputDir, fileName), emptyWav);
   return fileName;
 }

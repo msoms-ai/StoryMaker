@@ -1,4 +1,6 @@
-import lamejs from 'lamejs';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const lamejs = require('lamejs');
 
 const rawPcmBuffer = Buffer.alloc(48000); // 1 second of silence
 const mp3encoder = new lamejs.Mp3Encoder(1, 24000, 64);
