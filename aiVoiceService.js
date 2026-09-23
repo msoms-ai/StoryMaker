@@ -49,6 +49,10 @@ export async function generateAndSaveSlideVoice({
   } catch (err) {
     console.error(`[AI Voice Service] Google Cloud TTS error for Slide ${slideIndex + 1}: ${err.message}`);
     
+    // Save the exact error to a text file so we can debug it on Plesk
+    const errorLogPath = path.join(outputDir, `error_slide_${slideIndex + 1}.txt`);
+    fs.writeFileSync(errorLogPath, `Google Cloud TTS Error: ${err.message}\nStack: ${err.stack}`);
+    
     // Create a 0-byte file to trigger frontend Web Speech fallback gracefully
     fs.writeFileSync(filePath, Buffer.alloc(0));
     return fileName;
