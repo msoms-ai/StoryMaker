@@ -43,6 +43,7 @@ ${comments ? `USER MODIFICATION COMMENTS: "${comments}". Adapt the breakdown acc
 
 LANGUAGE MANDATE:
 - "storyTitle" and "slides" title and text MUST be in ${isArabic ? 'ARABIC (اللغة العربية)' : 'ENGLISH'}.
+${isArabic ? '- CRITICAL TTS MANDATE: The Arabic text in every slide MUST be fully vowelized with complete diacritics (التشكيل الكامل: الفتحة، الضمة، الكسرة، السكون، الشدة، التنوين) on EVERY SINGLE LETTER. This is absolutely necessary so the AI Text-to-Speech engine reads it with perfect grammar and pronunciation without guessing.' : ''}
 - "name" and "role" should be in ${isArabic ? 'Arabic' : 'English'}.
 - "visualProfile" MUST BE IN ENGLISH (to directly guide the AI image generator).
 
