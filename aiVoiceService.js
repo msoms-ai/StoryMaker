@@ -35,8 +35,8 @@ export async function generateAndSaveSlideVoice({
     voice: {
       languageCode: lang === 'ar' ? 'ar-XA' : 'en-US',
       name: lang === 'ar' 
-        ? (voiceGender === 'female' ? 'ar-XA-Wavenet-A' : 'ar-XA-Wavenet-B') 
-        : (voiceGender === 'female' ? 'en-US-Neural2-F' : 'en-US-Neural2-J')
+        ? (voiceGender === 'female' ? 'ar-XA-Chirp3-HD-Aoede' : 'ar-XA-Chirp3-HD-Puck') 
+        : (voiceGender === 'female' ? 'en-US-Chirp3-HD-Aoede' : 'en-US-Chirp3-HD-Puck')
     },
     audioConfig: { 
       audioEncoding: 'MP3',
