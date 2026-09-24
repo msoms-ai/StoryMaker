@@ -47,6 +47,17 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
 
   // Persist state to sessionStorage on change
   useEffect(() => {
+    if (step >= 8) {
+      sessionStorage.removeItem('wizard_step');
+      sessionStorage.removeItem('wizard_storyName');
+      sessionStorage.removeItem('wizard_category');
+      sessionStorage.removeItem('wizard_pastedText');
+      sessionStorage.removeItem('wizard_draftIdx');
+      sessionStorage.removeItem('wizard_planData');
+      sessionStorage.removeItem('wizard_draftStory');
+      return;
+    }
+
     sessionStorage.setItem('wizard_step', step);
     sessionStorage.setItem('wizard_storyName', storyName);
     sessionStorage.setItem('wizard_category', selectedCategory);
