@@ -53,7 +53,7 @@ RULES FOR PROMPT CREATION:
    - Ensure the perspective, camera angle, and composition highlight the emotional core of the scene.
 
 3. UNIFORM ART STYLE SPECIFICATION:
-   - Style: "${artStyle}, highly detailed, professional masterpiece".
+   - CRITICAL: The ENTIRE image MUST be drawn in the exact style of: "${artStyle}". Absolutely NO other styles.
    - Negative constraints: "No text, no letters, no words, no speech bubbles, no watermark".
 
 4. OUTPUT FORMAT:

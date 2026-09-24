@@ -615,8 +615,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className="w-12 h-12 rounded-full overflow-hidden bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center shrink-0">
-                            {c.avatarFilename ? (
-                              <img src={`http://localhost:3001${c.avatarFilename}`} alt={c.name} className="w-full h-full object-cover" />
+                            {c.avatarUrl ? (
+                              <img src={c.avatarUrl} alt={c.name} className="w-full h-full object-cover" />
                             ) : (
                               <User className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
                             )}
@@ -686,19 +686,20 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { id: 'male', label: lang === 'ar' ? 'ذكر' : 'Male' },
-                    { id: 'female', label: lang === 'ar' ? 'أنثى' : 'Female' },
+                    { id: 'male', label: lang === 'ar' ? 'ذكر' : 'Male', icon: '👦' },
+                    { id: 'female', label: lang === 'ar' ? 'أنثى' : 'Female', icon: '👧' },
                   ].map((voice) => (
                     <button
                       key={voice.id}
                       onClick={() => setNarratorVoice(voice.id)}
-                      className={`p-3 rounded-xl border-2 font-bold text-sm transition-all text-center ${
+                      className={`p-3 rounded-xl border-2 font-bold text-sm transition-all text-center flex flex-col items-center gap-1 ${
                         narratorVoice === voice.id
                           ? 'border-blue-500 bg-blue-500 text-white shadow-md'
                           : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-blue-500/50'
                       }`}
                     >
-                      {voice.label}
+                      <span className="text-2xl">{voice.icon}</span>
+                      <span>{voice.label}</span>
                     </button>
                   ))}
                 </div>
@@ -714,22 +715,23 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {[
-                    { id: 'Colored Pencil', label: lang === 'ar' ? 'أقلام خشبية' : 'Colored Pencil' },
-                    { id: 'Watercolor Painting', label: lang === 'ar' ? 'ألوان مائية' : 'Watercolor Painting' },
-                    { id: '3D Pixar Animation', label: lang === 'ar' ? 'رسوم ثلاثية الأبعاد' : '3D Pixar Animation' },
-                    { id: 'Anime / Manga', label: lang === 'ar' ? 'أنمي / مانغا' : 'Anime / Manga' },
-                    { id: 'Oil Painting', label: lang === 'ar' ? 'رسم زيتي' : 'Oil Painting' },
+                    { id: 'Colored Pencil', label: lang === 'ar' ? 'أقلام خشبية' : 'Colored Pencil', icon: '✏️' },
+                    { id: 'Watercolor Painting', label: lang === 'ar' ? 'ألوان مائية' : 'Watercolor Painting', icon: '🎨' },
+                    { id: '3D Pixar Animation', label: lang === 'ar' ? 'رسوم ثلاثية الأبعاد' : '3D Pixar Animation', icon: '🧸' },
+                    { id: 'Anime / Manga', label: lang === 'ar' ? 'أنمي / مانغا' : 'Anime / Manga', icon: '🌸' },
+                    { id: 'Oil Painting', label: lang === 'ar' ? 'رسم زيتي' : 'Oil Painting', icon: '🖼️' },
                   ].map((style) => (
                     <button
                       key={style.id}
                       onClick={() => setArtStyle(style.id)}
-                      className={`p-3 rounded-xl border-2 font-bold text-sm transition-all text-center ${
+                      className={`p-3 rounded-xl border-2 font-bold text-sm transition-all text-center flex flex-col items-center gap-1 ${
                         artStyle === style.id
                           ? 'border-amber-500 bg-amber-500 text-white shadow-md'
                           : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-amber-500/50'
                       }`}
                     >
-                      {style.label}
+                      <span className="text-2xl">{style.icon}</span>
+                      <span>{style.label}</span>
                     </button>
                   ))}
                 </div>

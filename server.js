@@ -1287,7 +1287,7 @@ app.post('/api/stories/plan', async (req, res) => {
         plan.characters.map(async (char) => {
           try {
             const avatarFileName = await generateCharacterAvatar(char, 'Anime / Manga', uploadsDir);
-            char.avatarFilename = `/uploads/${avatarFileName}`;
+            char.avatarUrl = `/uploads/${avatarFileName}`;
           } catch (e) {
             console.warn(`[Avatar Generation Error] failed for ${char.name}: ${e.message}`);
           }
