@@ -14,7 +14,8 @@ export async function buildGeminiVisualPrompt({
   category,
   slideIndex = 0,
   characters = [],
-  userFeedback = ''
+  userFeedback = '',
+  artStyle = 'Colored Pencil'
 }) {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -52,8 +53,8 @@ RULES FOR PROMPT CREATION:
    - Ensure the perspective, camera angle, and composition highlight the emotional core of the scene.
 
 3. UNIFORM ART STYLE SPECIFICATION:
-   - Style: "Hand-drawn colored pencil storybook illustration, soft warm colored pencils, pastel palette, fine graphite linework, authentic paper grain texture, charming wholesome children's literature aesthetic, highly detailed, masterwork".
-   - Negative constraints: "No text, no letters, no words, no speech bubbles, no watermark, no digital 3D render".
+   - Style: "${artStyle} storybook illustration, charming wholesome children's literature aesthetic, highly detailed, masterwork".
+   - Negative constraints: "No text, no letters, no words, no speech bubbles, no watermark".
 
 4. OUTPUT FORMAT:
    - Return ONLY the finalized English visual prompt string. Do not include introductory or explanatory conversational text.
@@ -80,7 +81,7 @@ ${userFeedback ? `User Revision Feedback: "${userFeedback}"` : ''}`;
         const visualPrompt = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (visualPrompt && visualPrompt.length > 10) {
           console.log(`[AI Image Service] Slide ${slideIndex + 1} consistency visual prompt: "${visualPrompt.substring(0, 140)}..."`);
-          return `${visualPrompt}, colored pencil illustration, children storybook artwork, no text`;
+          return `${visualPrompt}, ${artStyle} illustration, children storybook artwork, no text`;
         }
       }
     } catch (err) {
@@ -89,7 +90,7 @@ ${userFeedback ? `User Revision Feedback: "${userFeedback}"` : ''}`;
   }
 
   // Fallback visual prompt
-  return `A detailed hand-drawn colored pencil children storybook illustration for slide ${slideIndex + 1} of "${storyTitle}". Characters matching their established visual profiles and signature clothing, expressive faces, warm pastel colors, rich paper texture, soft colored pencils, no text`;
+  return `A detailed ${artStyle} children storybook illustration for slide ${slideIndex + 1} of "${storyTitle}". Characters matching their established visual profiles and signature clothing, expressive faces, no text`;
 }
 
 /**
@@ -136,7 +137,7 @@ async function generateViaGoogleGemini(prompt, apiKey) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `Generate a colored pencil storybook illustration: ${prompt}` }]
+            parts: [{ text: `Generate a storybook illustration: ${prompt}` }]
           }]
         })
       });
@@ -174,7 +175,8 @@ export async function generateAndSaveSlideImage({
   characters = [],
   outputDir,
   lang = 'ar',
-  userFeedback = ''
+  userFeedback = '',
+  artStyle = 'Colored Pencil'
 }) {
   const visualPrompt = await buildGeminiVisualPrompt({
     slideText,
@@ -182,7 +184,8 @@ export async function generateAndSaveSlideImage({
     category,
     slideIndex,
     characters,
-    userFeedback
+    userFeedback,
+    artStyle
   });
 
   const apiKey = process.env.GEMINI_API_KEY;

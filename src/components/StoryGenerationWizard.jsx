@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { Compass, Wand2, Moon, Rocket, Search, GraduationCap, Heart, Landmark, Upload, FileText, Link as LinkIcon, Check, CheckCircle2, Trash2, RotateCcw, ArrowRight, ArrowLeft, Sparkles, FolderPlus, Image as ImageIcon, Volume2, VolumeX, Users, Palette, Mic, BookOpen, RefreshCw } from 'lucide-react';
+import { Compass, Wand2, Moon, Rocket, Search, GraduationCap, Heart, Landmark, Upload, FileText, Link as LinkIcon, Check, CheckCircle2, Trash2, RotateCcw, ArrowRight, ArrowLeft, Sparkles, FolderPlus, Image as ImageIcon, Volume2, VolumeX, Users, Palette, Mic, BookOpen, RefreshCw, User, Edit2, Save, X } from 'lucide-react';
 import EnhancedAudioPlayer from './EnhancedAudioPlayer';
 import { getCategoryIconComponent } from '../categoryIcons';
 
@@ -41,6 +41,9 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
   const audioRef = useRef(null);
   const [redoComments, setRedoComments] = useState('');
   const [outcomeStatus, setOutcomeStatus] = useState('');
+  const [artStyle, setArtStyle] = useState('Colored Pencil');
+  const [editingCharIndex, setEditingCharIndex] = useState(null);
+  const [editingCharText, setEditingCharText] = useState('');
 
   // Persist state to sessionStorage on change
   useEffect(() => {
@@ -165,7 +168,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
             category: selectedCategory,
             lang,
             userFeedback: redoComments,
-            characters: planData ? planData.characters : []
+            characters: planData ? planData.characters : [],
+            artStyle
           })
         });
         const imgData = await imgRes.json();
@@ -594,21 +598,94 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   {planData.characters && planData.characters.map((c, i) => (
-                    <div key={i} className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-slate-800 space-y-1.5 shadow-sm">
+                    <div key={i} className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-slate-800 space-y-2 shadow-sm">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-1.5">
-                          👤 {c.name}
-                        </span>
-                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
-                          {c.role}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
+                            <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          </div>
+                          <span className="font-bold text-slate-900 dark:text-white text-sm">
+                            {c.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+                            {c.role}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setEditingCharIndex(i);
+                              setEditingCharText(c.visualProfile || '');
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+                            title="Edit Character"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      {c.visualProfile && (
-                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60 font-medium">
-                          🎨 <span className="font-semibold text-indigo-600 dark:text-indigo-400">{lang === 'ar' ? 'المظهر والزي الثابت:' : 'Signature Look & Outfit:'}</span> {c.visualProfile}
-                        </p>
+                      
+                      {editingCharIndex === i && (
+                        <div className="mt-2 space-y-2 animate-fade-in">
+                          <textarea
+                            value={editingCharText}
+                            onChange={(e) => setEditingCharText(e.target.value)}
+                            className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            rows="3"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setEditingCharIndex(null)}
+                              className="px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-1"
+                            >
+                              <X className="w-3 h-3" /> {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newPlan = { ...planData };
+                                newPlan.characters[i].visualProfile = editingCharText;
+                                setPlanData(newPlan);
+                                setEditingCharIndex(null);
+                              }}
+                              className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center gap-1"
+                            >
+                              <Save className="w-3 h-3" /> {lang === 'ar' ? 'حفظ' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Art Style Selector */}
+              <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h4 className="font-black text-amber-700 dark:text-amber-300 text-base flex items-center gap-2">
+                    <Palette className="w-5 h-5" />
+                    <span>{lang === 'ar' ? 'نمط الرسم الفني:' : 'Art Style:'}</span>
+                  </h4>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {[
+                    { id: 'Colored Pencil', label: lang === 'ar' ? 'أقلام خشبية' : 'Colored Pencil' },
+                    { id: 'Watercolor Painting', label: lang === 'ar' ? 'ألوان مائية' : 'Watercolor Painting' },
+                    { id: '3D Pixar Animation', label: lang === 'ar' ? 'رسوم ثلاثية الأبعاد' : '3D Pixar Animation' },
+                    { id: 'Anime / Manga', label: lang === 'ar' ? 'أنمي / مانغا' : 'Anime / Manga' },
+                    { id: 'Oil Painting', label: lang === 'ar' ? 'رسم زيتي' : 'Oil Painting' },
+                  ].map((style) => (
+                    <button
+                      key={style.id}
+                      onClick={() => setArtStyle(style.id)}
+                      className={`p-3 rounded-xl border-2 font-bold text-sm transition-all text-center ${
+                        artStyle === style.id
+                          ? 'border-amber-500 bg-amber-500 text-white shadow-md'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-amber-500/50'
+                      }`}
+                    >
+                      {style.label}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -689,8 +766,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 </h3>
                 <p className="text-sm font-bold text-amber-600 dark:text-amber-400">
                   {lang === 'ar'
-                    ? `جاري رسم وتجسيد المشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides} بالألوان الخشبية الدافئة (Google Gemini API)...`
-                    : `Drawing scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides} with warm colored pencils (Google Gemini API)...`}
+                    ? `جاري رسم وتجسيد المشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides} بنمط (${artStyle}) (Google Gemini API)...`
+                    : `Drawing scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides} with ${artStyle} style (Google Gemini API)...`}
                 </p>
 
                 <div className="max-w-md mx-auto space-y-2 pt-2">

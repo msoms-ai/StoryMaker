@@ -1346,11 +1346,11 @@ app.post('/api/stories/start-generation', async (req, res) => {
 
 // 2. POST /api/stories/generate-slide-image
 app.post('/api/stories/generate-slide-image', async (req, res) => {
-  const { folderName, slideIndex, slideText, storyTitle, category, characters, lang, userFeedback } = req.body;
+  const { folderName, slideIndex, slideText, storyTitle, category, characters, lang, userFeedback, artStyle } = req.body;
   const imgDir = path.join(STORIES_DIR, folderName, 'story_images');
 
   try {
-    console.log(`[API] Generating Image for Slide ${slideIndex + 1} with character visual consistency...`);
+    console.log(`[API] Generating Image for Slide ${slideIndex + 1} with character visual consistency and style ${artStyle}...`);
     const savedImgFilename = await generateAndSaveSlideImage({
       slideText,
       storyTitle,
@@ -1359,7 +1359,8 @@ app.post('/api/stories/generate-slide-image', async (req, res) => {
       characters: characters || [],
       outputDir: imgDir,
       lang: lang || 'ar',
-      userFeedback
+      userFeedback,
+      artStyle
     });
 
     const imageFile = `/STORIES/${encodeURIComponent(folderName)}/story_images/${savedImgFilename}`;
