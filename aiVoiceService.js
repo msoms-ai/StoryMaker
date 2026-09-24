@@ -33,7 +33,7 @@ export async function generateAndSaveSlideVoice({
     input: { text: slideText },
     voice: {
       languageCode: lang === 'ar' ? 'ar-XA' : 'en-US',
-      name: lang === 'ar' ? 'ar-XA-Neural2-B' : 'en-US-Neural2-J' 
+      name: lang === 'ar' ? 'ar-XA-Wavenet-B' : 'en-US-Neural2-J' 
     },
     audioConfig: { 
       audioEncoding: 'MP3',
