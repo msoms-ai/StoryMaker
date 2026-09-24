@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
-import { generateAndSaveSlideImage, generateProfileCoverImage } from './aiImageService.js';
+import { generateAndSaveSlideImage, generateProfileCoverImage, generateCharacterAvatar } from './aiImageService.js';
 import { generateStoryPlanWithGemini } from './aiTextService.js';
 import { generateAndSaveSlideVoice } from './aiVoiceService.js';
 import { sendOtpEmail, sendTeacherRequestToAdmin, sendPackagePurchaseEmail } from './emailService.js';
@@ -37,6 +37,7 @@ const DB_FILE = path.join(STORIES_DIR, 'database.json');
 // Serve static assets
 app.use('/STORIES', express.static(STORIES_DIR));
 app.use('/USERS', express.static(USERS_DIR));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Category Data
 const DEFAULT_CATEGORIES = [
@@ -1275,6 +1276,25 @@ app.post('/api/stories/plan', async (req, res) => {
       comments
     });
 
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    if (plan && plan.characters && plan.characters.length > 0) {
+      // Use Promise.all to generate avatars in parallel
+      await Promise.all(
+        plan.characters.map(async (char) => {
+          try {
+            const avatarFileName = await generateCharacterAvatar(char, 'Anime / Manga', uploadsDir);
+            char.avatarFilename = `/uploads/${avatarFileName}`;
+          } catch (e) {
+            console.warn(`[Avatar Generation Error] failed for ${char.name}: ${e.message}`);
+          }
+        })
+      );
+    }
+
     res.json({
       success: true,
       plan
@@ -1373,7 +1393,7 @@ app.post('/api/stories/generate-slide-image', async (req, res) => {
 
 // 3. POST /api/stories/generate-slide-voice
 app.post('/api/stories/generate-slide-voice', async (req, res) => {
-  const { folderName, slideIndex, slideText, lang } = req.body;
+  const { folderName, slideIndex, slideText, lang, voiceGender } = req.body;
   const voiceDir = path.join(STORIES_DIR, folderName, 'story_voice');
 
   try {
@@ -1382,7 +1402,8 @@ app.post('/api/stories/generate-slide-voice', async (req, res) => {
       slideText,
       slideIndex,
       outputDir: voiceDir,
-      lang: lang || 'ar'
+      lang: lang || 'ar',
+      voiceGender: voiceGender || 'male'
     });
 
     const voiceFile = `/STORIES/${encodeURIComponent(folderName)}/story_voice/${savedVoiceFilename}`;

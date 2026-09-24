@@ -22,7 +22,8 @@ export async function generateAndSaveSlideVoice({
   slideText,
   slideIndex,
   outputDir,
-  lang = 'ar'
+  lang = 'ar',
+  voiceGender = 'male'
 }) {
   console.log(`[AI Voice Service] Generating Voice Narration for Slide ${slideIndex + 1} via Google Cloud Neural2...`);
   
@@ -33,7 +34,9 @@ export async function generateAndSaveSlideVoice({
     input: { text: slideText },
     voice: {
       languageCode: lang === 'ar' ? 'ar-XA' : 'en-US',
-      name: lang === 'ar' ? 'ar-XA-Wavenet-B' : 'en-US-Neural2-J' 
+      name: lang === 'ar' 
+        ? (voiceGender === 'female' ? 'ar-XA-Wavenet-A' : 'ar-XA-Wavenet-B') 
+        : (voiceGender === 'female' ? 'en-US-Neural2-F' : 'en-US-Neural2-J')
     },
     audioConfig: { 
       audioEncoding: 'MP3',

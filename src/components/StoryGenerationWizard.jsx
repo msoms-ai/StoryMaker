@@ -44,6 +44,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
   const [artStyle, setArtStyle] = useState('Colored Pencil');
   const [editingCharIndex, setEditingCharIndex] = useState(null);
   const [editingCharText, setEditingCharText] = useState('');
+  const [narratorVoice, setNarratorVoice] = useState('male');
 
   // Persist state to sessionStorage on change
   useEffect(() => {
@@ -204,7 +205,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
             folderName,
             slideIndex: i,
             slideText: slides[i].text,
-            lang
+            lang,
+            voiceGender: narratorVoice
           })
         });
         const voiceData = await voiceRes.json();
@@ -612,8 +614,12 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                     <div key={i} className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-slate-800 space-y-2 shadow-sm">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
-                            <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <div className="w-12 h-12 rounded-full overflow-hidden bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center shrink-0">
+                            {c.avatarFilename ? (
+                              <img src={`http://localhost:3001${c.avatarFilename}`} alt={c.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <User className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                            )}
                           </div>
                           <span className="font-bold text-slate-900 dark:text-white text-sm">
                             {c.name}
@@ -666,6 +672,34 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                         </div>
                       )}
                     </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Narrator Voice Selector */}
+              <div className="p-5 rounded-2xl bg-blue-500/10 border border-blue-500/30 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h4 className="font-black text-blue-700 dark:text-blue-300 text-base flex items-center gap-2">
+                    <Mic className="w-5 h-5" />
+                    <span>{lang === 'ar' ? 'صوت الراوي:' : 'Narrator Voice:'}</span>
+                  </h4>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { id: 'male', label: lang === 'ar' ? 'ذكر' : 'Male' },
+                    { id: 'female', label: lang === 'ar' ? 'أنثى' : 'Female' },
+                  ].map((voice) => (
+                    <button
+                      key={voice.id}
+                      onClick={() => setNarratorVoice(voice.id)}
+                      className={`p-3 rounded-xl border-2 font-bold text-sm transition-all text-center ${
+                        narratorVoice === voice.id
+                          ? 'border-blue-500 bg-blue-500 text-white shadow-md'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-blue-500/50'
+                      }`}
+                    >
+                      {voice.label}
+                    </button>
                   ))}
                 </div>
               </div>

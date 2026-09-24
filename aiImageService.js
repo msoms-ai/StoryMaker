@@ -28,14 +28,14 @@ export async function buildGeminiVisualPrompt({
   }
 
   if (apiKey) {
-    const systemInstruction = `You are an award-winning children's storybook art director and character consistency lead.
+    const systemInstruction = `You are an award-winning art director and character consistency lead.
 
 Your task is to analyze the slide text of an ongoing story and generate a single, highly-detailed English visual illustration prompt for the AI image generator.
 
 ==================================================
 CRITICAL DIRECTIVE: CROSS-SLIDE CHARACTER CONSISTENCY
 ==================================================
-To ensure every character looks IDENTICAL in every slide across the entire storybook, you MUST adhere strictly to the Character Visual Dossier below:
+To ensure every character looks IDENTICAL in every slide across the entire story, you MUST adhere strictly to the Character Visual Dossier below:
 
 --- CHARACTER VISUAL CONSISTENCY DOSSIER ---
 ${characterDossierText}
@@ -53,7 +53,7 @@ RULES FOR PROMPT CREATION:
    - Ensure the perspective, camera angle, and composition highlight the emotional core of the scene.
 
 3. UNIFORM ART STYLE SPECIFICATION:
-   - Style: "${artStyle} storybook illustration, charming wholesome children's literature aesthetic, highly detailed, masterwork".
+   - Style: "${artStyle}, highly detailed, professional masterpiece".
    - Negative constraints: "No text, no letters, no words, no speech bubbles, no watermark".
 
 4. OUTPUT FORMAT:
@@ -81,7 +81,7 @@ ${userFeedback ? `User Revision Feedback: "${userFeedback}"` : ''}`;
         const visualPrompt = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (visualPrompt && visualPrompt.length > 10) {
           console.log(`[AI Image Service] Slide ${slideIndex + 1} consistency visual prompt: "${visualPrompt.substring(0, 140)}..."`);
-          return `${visualPrompt}, ${artStyle} illustration, children storybook artwork, no text`;
+          return `${visualPrompt}, ${artStyle}, no text`;
         }
       }
     } catch (err) {
@@ -90,7 +90,7 @@ ${userFeedback ? `User Revision Feedback: "${userFeedback}"` : ''}`;
   }
 
   // Fallback visual prompt
-  return `A detailed ${artStyle} children storybook illustration for slide ${slideIndex + 1} of "${storyTitle}". Characters matching their established visual profiles and signature clothing, expressive faces, no text`;
+  return `A detailed ${artStyle} illustration for slide ${slideIndex + 1} of "${storyTitle}". Characters matching their established visual profiles and signature clothing, expressive faces, no text`;
 }
 
 /**
@@ -137,7 +137,7 @@ async function generateViaGoogleGemini(prompt, apiKey) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `Generate a storybook illustration: ${prompt}` }]
+            parts: [{ text: prompt }]
           }]
         })
       });
@@ -199,4 +199,25 @@ export async function generateAndSaveSlideImage({
   fs.writeFileSync(filePath, buffer);
   console.log(`[AI Image Service] Successfully saved Gemini AI image: slide_${slideIndex + 1}.png (${buffer.length} bytes)`);
   return `slide_${slideIndex + 1}.png`;
+}
+
+/**
+ * Generate a character avatar
+ */
+export async function generateCharacterAvatar(character, artStyle = 'Colored Pencil', outputDir) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
+
+  const enhancedPrompt = `A portrait avatar of ${character.name}, a ${character.role}, ${character.gender}. Visual profile: ${character.visualProfile || 'Consistent character with defined outfit and colors'}. Style: ${artStyle}, highly detailed, professional masterpiece, plain background. No text.`;
+
+  try {
+    const buffer = await generateViaGoogleGemini(enhancedPrompt, apiKey);
+    const fileName = `avatar_${Date.now()}_${Math.floor(Math.random() * 1000)}.png`;
+    const filePath = path.join(outputDir, fileName);
+    fs.writeFileSync(filePath, buffer);
+    return fileName;
+  } catch (err) {
+    console.error(`[AI Image Service] Avatar Generation Error: ${err.message}`);
+    throw err;
+  }
 }
