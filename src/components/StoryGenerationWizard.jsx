@@ -9,17 +9,20 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
   const { lang, t } = useLanguage();
   const { user, refreshUser } = useAuth();
   
-  const [step, setStep] = useState(1);
-  const [storyName, setStoryName] = useState('');
+  const [step, setStep] = useState(() => parseInt(sessionStorage.getItem('wizard_step')) || 1);
+  const [storyName, setStoryName] = useState(() => sessionStorage.getItem('wizard_storyName') || '');
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('general');
+  const [selectedCategory, setSelectedCategory] = useState(() => sessionStorage.getItem('wizard_category') || 'general');
   const [isRefreshingCategories, setIsRefreshingCategories] = useState(false);
   const [inputMethod, setInputMethod] = useState('paste');
-  const [pastedText, setPastedText] = useState('');
+  const [pastedText, setPastedText] = useState(() => sessionStorage.getItem('wizard_pastedText') || '');
   const [fileName, setFileName] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   
-  const [planData, setPlanData] = useState(null);
+  const [planData, setPlanData] = useState(() => {
+    const p = sessionStorage.getItem('wizard_planData');
+    return p ? JSON.parse(p) : null;
+  });
   const [isPlanning, setIsPlanning] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
@@ -28,13 +31,31 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
   const [genProgressIndex, setGenProgressIndex] = useState(0);
   const [totalGenSlides, setTotalGenSlides] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [draftStory, setDraftStory] = useState(null);
-  const [draftSlideIdx, setDraftSlideIdx] = useState(0);
+  const [draftStory, setDraftStory] = useState(() => {
+    const d = sessionStorage.getItem('wizard_draftStory');
+    return d ? JSON.parse(d) : null;
+  });
+  const [draftSlideIdx, setDraftSlideIdx] = useState(() => parseInt(sessionStorage.getItem('wizard_draftIdx')) || 0);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
   const audioRef = useRef(null);
   const [redoComments, setRedoComments] = useState('');
   const [outcomeStatus, setOutcomeStatus] = useState('');
+
+  // Persist state to sessionStorage on change
+  useEffect(() => {
+    sessionStorage.setItem('wizard_step', step);
+    sessionStorage.setItem('wizard_storyName', storyName);
+    sessionStorage.setItem('wizard_category', selectedCategory);
+    sessionStorage.setItem('wizard_pastedText', pastedText);
+    sessionStorage.setItem('wizard_draftIdx', draftSlideIdx);
+    
+    if (planData) sessionStorage.setItem('wizard_planData', JSON.stringify(planData));
+    else sessionStorage.removeItem('wizard_planData');
+    
+    if (draftStory) sessionStorage.setItem('wizard_draftStory', JSON.stringify(draftStory));
+    else sessionStorage.removeItem('wizard_draftStory');
+  }, [step, storyName, selectedCategory, pastedText, planData, draftStory, draftSlideIdx]);
 
   // Fetch dynamic categories from server (fresh with cache-busting)
   const fetchCategories = async () => {
@@ -56,16 +77,9 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     }
   };
 
-  // Clear state when wizard mounts & load dynamic categories
+  // Load dynamic categories on mount
   useEffect(() => {
-    setStoryName('');
-    setPastedText('');
-    setFileName('');
-    setPlanData(null);
-    setDraftStory(null);
-
     fetchCategories();
-
     return () => {
       stopAllAudio();
     };
@@ -270,6 +284,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'published' })
       });
+      setDraftStory(null);
+      setPlanData(null);
       setOutcomeStatus('saved');
       setStep(8);
     } else if (action === 'reject') {
@@ -278,9 +294,12 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'deleted' })
       });
+      setDraftStory(null);
+      setPlanData(null);
       setOutcomeStatus('deleted');
       setStep(8);
     } else if (action === 'redo') {
+      setDraftStory(null);
       setOutcomeStatus('redo');
       setStep(8);
       setTimeout(() => {
