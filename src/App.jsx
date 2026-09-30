@@ -15,6 +15,7 @@ import AdminSettingsPage from './components/AdminSettingsPage';
 import StoriesModeratorPage from './components/StoriesModeratorPage';
 import AuthModal from './components/AuthModal';
 import { AboutPage, RulesPage, FeedbackPage, ContactPage } from './components/Pages';
+import HelpPage from './components/HelpPage';
 import { Wrench, ShieldCheck, Lock } from 'lucide-react';
 
 export const UserViewContext = React.createContext();
@@ -153,6 +154,7 @@ function MainRouter() {
         {currentView === 'about' && <AboutPage setCurrentView={handleNavigate} />}
         {currentView === 'rules' && <RulesPage setCurrentView={handleNavigate} />}
         {currentView === 'contact' && <ContactPage setCurrentView={handleNavigate} />}
+        {currentView === 'help' && <HelpPage />}
 
         {currentView === 'publicProfile' && (
           <PublicProfilePage

@@ -237,3 +237,64 @@ function extractCharactersFromText(text, isArabic) {
 
   return characters;
 }
+
+export async function generateStoryTextWithGemini({
+  title, category, characters, mainIdea, events, location, timePeriod, moral, outcome, languageDifficulty, grammarFocus, vocabList, fixedLines, lang
+}) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is missing');
+
+  const isArabic = lang === 'ar';
+  const prompt = `Write a creative and engaging children's story.
+  
+Story Title: ${title || 'Not specified'}
+Category: ${category || 'General'}
+Characters: ${characters && characters.length > 0 ? JSON.stringify(characters) : 'Not specified'}
+Main Idea: ${mainIdea || 'Not specified'}
+Events: ${events || 'Not specified'}
+Location: ${location || 'Not specified'}
+Time Period: ${timePeriod || 'Not specified'}
+Moral: ${moral || 'Not specified'}
+Outcome: ${outcome || 'Not specified'}
+Language Difficulty: ${languageDifficulty || 'Normal'}
+Grammar Focus: ${grammarFocus || 'None'}
+Vocabulary List to Include: ${vocabList || 'None'}
+Fixed Lines to Include: ${fixedLines || 'None'}
+
+Constraints:
+1. Write the story text in ${isArabic ? 'Arabic' : 'English'}.
+2. If Arabic, fully vowelize the text (التشكيل الكامل).
+3. The output MUST be a JSON object containing a single key "storyText" with the full generated story as a string.
+
+Output JSON format ONLY:
+{
+  "storyText": "Once upon a time..."
+}`;
+
+  const url = \`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=\${apiKey}\`;
+  
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.7
+      }
+    })
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to generate story text from Gemini');
+  }
+
+  const data = await res.json();
+  const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (rawJsonText) {
+    const parsed = JSON.parse(rawJsonText);
+    return parsed.storyText || '';
+  }
+  return '';
+}
+

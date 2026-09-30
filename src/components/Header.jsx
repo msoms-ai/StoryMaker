@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { BookOpen, Moon, Sun, Globe, Sparkles, User, LogIn, LogOut, ShieldCheck, Settings, CreditCard, ChevronDown, SlidersHorizontal, BookCheck } from 'lucide-react';
+import { BookOpen, Moon, Sun, Globe, Sparkles, User, LogIn, LogOut, ShieldCheck, Settings, CreditCard, ChevronDown, SlidersHorizontal, BookCheck, HelpCircle } from 'lucide-react';
 
 export default function Header({ currentView, setCurrentView }) {
   const { lang, theme, toggleLanguage, toggleTheme, t } = useLanguage();
@@ -87,6 +87,15 @@ export default function Header({ currentView, setCurrentView }) {
             title="Toggle Theme"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+          </button>
+
+          {/* Help Button */}
+          <button
+            onClick={() => setCurrentView('help')}
+            className="p-1.5 sm:p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
+            title={lang === 'ar' ? 'المساعدة' : 'Help'}
+          >
+            <HelpCircle className="w-4 h-4 text-emerald-500" />
           </button>
 
           {/* User Account / Login Button */}

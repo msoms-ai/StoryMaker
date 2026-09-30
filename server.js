@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { generateAndSaveSlideImage, generateProfileCoverImage, generateCharacterAvatar } from './aiImageService.js';
-import { generateStoryPlanWithGemini } from './aiTextService.js';
+import { generateStoryPlanWithGemini, generateStoryTextWithGemini } from './aiTextService.js';
 import { generateAndSaveSlideVoice } from './aiVoiceService.js';
 import { sendOtpEmail, sendTeacherRequestToAdmin, sendPackagePurchaseEmail } from './emailService.js';
 import { generateToken, authenticateUser, requireRole } from './authMiddleware.js';
@@ -799,6 +799,15 @@ app.get('/api/settings', (req, res) => {
   res.json({ success: true, settings: db.settings });
 });
 
+// GET /api/statistics - Public statistics
+app.get('/api/statistics', (req, res) => {
+  const db = readDB();
+  const totalStories = db.stories.length;
+  const totalSlides = db.stories.reduce((acc, story) => acc + (story.slidesCount || story.slides?.length || 0), 0);
+  const totalUsers = db.users.length;
+  res.json({ success: true, stats: { totalStories, totalSlides, totalUsers } });
+});
+
 // GET /api/admin/settings - Admin settings
 app.get('/api/admin/settings', authenticateUser, requireRole('Admin'), (req, res) => {
   const db = readDB();
@@ -1244,7 +1253,19 @@ app.get('/api/stories/:id', (req, res) => {
   if (!story) {
     return res.status(404).json({ success: false, message: 'Story not found' });
   }
-  res.json({ success: true, story });
+
+  const storyObj = { ...story };
+  const userId = req.query.userId;
+  if (userId) {
+    const userProgress = storyObj.userProgress && storyObj.userProgress[userId] 
+      ? storyObj.userProgress[userId] 
+      : { currentSlide: 0, completed: false };
+    storyObj.readProgress = userProgress;
+  } else {
+    storyObj.readProgress = { currentSlide: 0, completed: false };
+  }
+
+  res.json({ success: true, story: storyObj });
 });
 
 // POST /api/stories/plan - Step 4: AI Analysis & Verbatim Breakdown
@@ -1302,6 +1323,70 @@ app.post('/api/stories/plan', async (req, res) => {
   } catch (err) {
     console.error('[API /api/stories/plan Error]:', err);
     res.status(500).json({ success: false, message: 'Failed to generate story plan' });
+  }
+});
+
+// POST /api/stories/generate-text - AI Story Generation from scratch
+app.post('/api/stories/generate-text', async (req, res) => {
+  const { title, category, characters, mainIdea, events, location, timePeriod, moral, outcome, languageDifficulty, grammarFocus, vocabList, fixedLines, lang } = req.body;
+
+  // Crucial Requirement: Sanitize all inputs heavily on the backend
+  const sanitize = (str) => {
+    if (typeof str !== 'string') return '';
+    return str.replace(/[<>'"\\;]/g, '').trim();
+  };
+
+  const sanitizeArray = (arr) => {
+    if (!Array.isArray(arr)) return [];
+    return arr.map(item => {
+      if (typeof item === 'object' && item !== null) {
+        const sanitizedItem = {};
+        for (const [k, v] of Object.entries(item)) {
+          sanitizedItem[sanitize(k)] = sanitize(v);
+        }
+        return sanitizedItem;
+      }
+      return sanitize(item);
+    });
+  };
+
+  const sTitle = sanitize(title);
+  const sCategory = sanitize(category);
+  const sCharacters = sanitizeArray(characters);
+  const sMainIdea = sanitize(mainIdea);
+  const sEvents = sanitize(events);
+  const sLocation = sanitize(location);
+  const sTimePeriod = sanitize(timePeriod);
+  const sMoral = sanitize(moral);
+  const sOutcome = sanitize(outcome);
+  const sLanguageDifficulty = sanitize(languageDifficulty);
+  const sGrammarFocus = sanitize(grammarFocus);
+  const sVocabList = sanitize(vocabList);
+  const sFixedLines = sanitize(fixedLines);
+  const sLang = sanitize(lang);
+
+  try {
+    const storyText = await generateStoryTextWithGemini({
+      title: sTitle,
+      category: sCategory,
+      characters: sCharacters,
+      mainIdea: sMainIdea,
+      events: sEvents,
+      location: sLocation,
+      timePeriod: sTimePeriod,
+      moral: sMoral,
+      outcome: sOutcome,
+      languageDifficulty: sLanguageDifficulty,
+      grammarFocus: sGrammarFocus,
+      vocabList: sVocabList,
+      fixedLines: sFixedLines,
+      lang: sLang
+    });
+
+    res.json({ success: true, storyText });
+  } catch (err) {
+    console.error('[API /api/stories/generate-text Error]:', err);
+    res.status(500).json({ success: false, message: 'Failed to generate story text' });
   }
 });
 
@@ -1622,15 +1707,25 @@ app.delete('/api/moderation/stories/:id', authenticateUser, (req, res) => {
 
 // POST /api/stories/:id/progress - Save reader slide completion
 app.post('/api/stories/:id/progress', (req, res) => {
-  const { currentSlide, completed } = req.body;
+  const { currentSlide, completed, userId } = req.body;
   const db = readDB();
   const story = db.stories.find((s) => s.id === req.params.id);
 
-  if (story) {
-    story.readProgress = {
-      currentSlide: currentSlide !== undefined ? currentSlide : story.readProgress.currentSlide,
-      completed: completed !== undefined ? completed : story.readProgress.completed
+  if (story && userId) {
+    if (!story.userProgress) story.userProgress = {};
+    if (!story.completedBy) story.completedBy = [];
+
+    const prevProgress = story.userProgress[userId] || { currentSlide: 0, completed: false };
+
+    story.userProgress[userId] = {
+      currentSlide: currentSlide !== undefined ? currentSlide : prevProgress.currentSlide,
+      completed: completed !== undefined ? completed : prevProgress.completed
     };
+
+    if (story.userProgress[userId].completed && !story.completedBy.includes(userId)) {
+      story.completedBy.push(userId);
+    }
+    
     writeDB(db);
   }
 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { Compass, Wand2, Moon, Rocket, Search, GraduationCap, Heart, Landmark, Upload, FileText, Link as LinkIcon, Check, CheckCircle2, Trash2, RotateCcw, ArrowRight, ArrowLeft, Sparkles, FolderPlus, Image as ImageIcon, Volume2, VolumeX, Users, Palette, Mic, BookOpen, RefreshCw, User, Edit2, Save, X } from 'lucide-react';
+import { Compass, Wand2, Moon, Rocket, Search, GraduationCap, Heart, Landmark, Upload, FileText, Link as LinkIcon, Check, CheckCircle2, Trash2, RotateCcw, ArrowRight, ArrowLeft, Sparkles, FolderPlus, Image as ImageIcon, Volume2, VolumeX, Users, Palette, Mic, BookOpen, RefreshCw, User, Edit2, Save, X, Plus, Info } from 'lucide-react';
 import EnhancedAudioPlayer from './EnhancedAudioPlayer';
 import { getCategoryIconComponent } from '../categoryIcons';
 
@@ -9,7 +9,21 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
   const { lang, t } = useLanguage();
   const { user, refreshUser } = useAuth();
   
-  const [step, setStep] = useState(() => parseInt(sessionStorage.getItem('wizard_step')) || 1);
+  const [step, setStep] = useState(() => parseInt(sessionStorage.getItem('wizard_step')) || 0);
+  const [wizardMode, setWizardMode] = useState(() => sessionStorage.getItem('wizard_mode') || '');
+  const [charactersList, setCharactersList] = useState([]);
+  const [mainIdea, setMainIdea] = useState('');
+  const [eventsText, setEventsText] = useState('');
+  const [locationText, setLocationText] = useState('');
+  const [timePeriod, setTimePeriod] = useState('');
+  const [moralText, setMoralText] = useState('');
+  const [outcomeText, setOutcomeText] = useState('');
+  const [languageDifficulty, setLanguageDifficulty] = useState('Normal');
+  const [grammarFocus, setGrammarFocus] = useState('');
+  const [vocabList, setVocabList] = useState('');
+  const [fixedLines, setFixedLines] = useState('');
+  const [isGeneratingText, setIsGeneratingText] = useState(false);
+
   const [storyName, setStoryName] = useState(() => sessionStorage.getItem('wizard_storyName') || '');
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(() => sessionStorage.getItem('wizard_category') || 'general');
@@ -48,8 +62,9 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
 
   // Persist state to sessionStorage on change
   useEffect(() => {
-    if (step >= 8) {
+    if (step >= 8 && step < 10) {
       sessionStorage.removeItem('wizard_step');
+      sessionStorage.removeItem('wizard_mode');
       sessionStorage.removeItem('wizard_storyName');
       sessionStorage.removeItem('wizard_category');
       sessionStorage.removeItem('wizard_pastedText');
@@ -60,6 +75,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     }
 
     sessionStorage.setItem('wizard_step', step);
+    sessionStorage.setItem('wizard_mode', wizardMode);
     sessionStorage.setItem('wizard_storyName', storyName);
     sessionStorage.setItem('wizard_category', selectedCategory);
     sessionStorage.setItem('wizard_pastedText', pastedText);
@@ -331,6 +347,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     <div className="max-w-4xl mx-auto px-4 py-8">
       
       {/* Header Progress Bar (Synchronized 8 Total Steps) */}
+      {step > 0 && step < 10 && (
       <div className="glass-panel p-6 rounded-3xl mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className={`text-xl font-black text-slate-900 dark:text-white ${lang === 'ar' ? 'font-arabic' : ''} flex items-center gap-2`}>
@@ -348,6 +365,282 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
           ></div>
         </div>
       </div>
+      )}
+
+      {/* STEP 0: Mode Selection */}
+      {step === 0 && (
+        <div className="glass-panel p-8 rounded-3xl space-y-8 animate-fade-in text-center">
+          <h3 className={`text-3xl font-black text-slate-900 dark:text-white ${lang === 'ar' ? 'font-arabic' : ''}`}>
+            {lang === 'ar' ? 'مرحباً بك في صانع القصص' : 'Welcome to Story Maker'}
+          </h3>
+          <p className="text-slate-600 dark:text-slate-300 text-lg">
+            {lang === 'ar' ? 'كيف تود إنشاء قصتك اليوم؟' : 'How would you like to create your story today?'}
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+            <button
+              onClick={() => { setWizardMode('make'); setStep(10); }}
+              className="p-8 rounded-3xl border-4 border-transparent bg-gradient-to-br from-amber-400/20 to-amber-600/20 hover:from-amber-400 hover:to-amber-600 hover:text-white transition-all group flex flex-col items-center gap-4 shadow-lg hover:shadow-amber-500/50"
+            >
+              <div className="w-20 h-20 rounded-full bg-amber-500 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
+                <Wand2 className="w-10 h-10" />
+              </div>
+              <h4 className={`text-2xl font-black ${lang === 'ar' ? 'font-arabic' : ''}`}>
+                {lang === 'ar' ? 'تأليف قصة (Make a Story)' : 'Make a Story'}
+              </h4>
+              <p className="text-sm opacity-80">
+                {lang === 'ar' ? 'دع الذكاء الاصطناعي يكتب لك القصة من الصفر بناءً على أفكارك.' : 'Let AI write a story from scratch based on your ideas.'}
+              </p>
+            </button>
+            <button
+              onClick={() => { setWizardMode('convert'); setStep(1); }}
+              className="p-8 rounded-3xl border-4 border-transparent bg-gradient-to-br from-indigo-400/20 to-indigo-600/20 hover:from-indigo-400 hover:to-indigo-600 hover:text-white transition-all group flex flex-col items-center gap-4 shadow-lg hover:shadow-indigo-500/50"
+            >
+              <div className="w-20 h-20 rounded-full bg-indigo-500 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
+                <FileText className="w-10 h-10" />
+              </div>
+              <h4 className={`text-2xl font-black ${lang === 'ar' ? 'font-arabic' : ''}`}>
+                {lang === 'ar' ? 'تحويل نص إلى قصة (Convert a Story)' : 'Convert a Story'}
+              </h4>
+              <p className="text-sm opacity-80">
+                {lang === 'ar' ? 'تحويل نص جاهز أو ملف أو رابط إلى قصة مصورة ومسموعة.' : 'Convert existing text, files, or links into an illustrated & voiced story.'}
+              </p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MAKE A STORY - Step 10: Form */}
+      {step === 10 && (
+        <div className="glass-panel p-8 rounded-3xl space-y-6 animate-fade-in">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 mb-6">
+            <h3 className={`text-2xl font-black text-slate-900 dark:text-white ${lang === 'ar' ? 'font-arabic' : ''}`}>
+              {lang === 'ar' ? 'بناء قصة جديدة' : 'Make a New Story'}
+            </h3>
+            <button onClick={() => setStep(0)} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-sm font-bold">
+              {lang === 'ar' ? 'عودة' : 'Back'}
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'عنوان القصة' : 'Story Title'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'مثال: مغامرة الفارس الشجاع' : 'Example: The Brave Knight Adventure'}</div></div>
+              </label>
+              <input type="text" value={storyName} onChange={e => setStoryName(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="Enter title..."/>
+            </div>
+            
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'التصنيف' : 'Category'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'اختر تصنيف القصة' : 'Choose story category'}</div></div>
+              </label>
+              <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border">
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name[lang] || cat.name.en || cat.name.ar}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'الفكرة الرئيسية' : 'Main Idea'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'عن ماذا تتحدث القصة بكلمات قليلة؟' : 'What is the story about in a few words?'}</div></div>
+              </label>
+              <input type="text" value={mainIdea} onChange={e => setMainIdea(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. A boy finding a magical sword"/>
+            </div>
+            
+            <div className="space-y-2 relative md:col-span-2">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'أحداث القصة' : 'Story Events'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'اكتب باختصار الأحداث التي تريدها في القصة' : 'Briefly describe the events you want to happen'}</div></div>
+              </label>
+              <textarea rows="3" value={eventsText} onChange={e => setEventsText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. The boy wanders into the forest, meets a fairy, and solves a riddle..."></textarea>
+            </div>
+            
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'المكان' : 'Location'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'مثال: غابة سحرية، مدينة حديثة' : 'Example: Magical Forest, Modern City'}</div></div>
+              </label>
+              <input type="text" value={locationText} onChange={e => setLocationText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="Location..."/>
+            </div>
+            
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'الزمان' : 'Time Period'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'مثال: في العصور الوسطى، المستقبل' : 'Example: Middle Ages, Future'}</div></div>
+              </label>
+              <input type="text" value={timePeriod} onChange={e => setTimePeriod(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="Time Period..."/>
+            </div>
+
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'العبرة (الهدف)' : 'Moral'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'الدرس المستفاد من القصة' : 'The lesson learned'}</div></div>
+              </label>
+              <input type="text" value={moralText} onChange={e => setMoralText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. Always be honest"/>
+            </div>
+
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'النهاية' : 'Outcome'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'كيف تنتهي القصة؟ سعيد؟ غامض؟' : 'How does it end? Happy? Mysterious?'}</div></div>
+              </label>
+              <input type="text" value={outcomeText} onChange={e => setOutcomeText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="Outcome..."/>
+            </div>
+
+            <div className="space-y-2 relative md:col-span-2">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                  {lang === 'ar' ? 'الشخصيات' : 'Characters'}
+                  <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'أضف شخصيات القصة وتفاصيلهم' : 'Add story characters and their details'}</div></div>
+                </label>
+                <button onClick={() => setCharactersList([...charactersList, { name: '', gender: '', age: '', clothes: '', visuals: '' }])} className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold flex items-center gap-1">
+                  <Plus className="w-4 h-4"/> {lang === 'ar' ? 'إضافة شخصية' : 'Add Character'}
+                </button>
+              </div>
+              <div className="space-y-3">
+                {charactersList.map((c, i) => (
+                  <div key={i} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border flex flex-col gap-3">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-bold text-sm">Character {i+1}</h4>
+                      <button onClick={() => setCharactersList(charactersList.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <input type="text" placeholder="Name" value={c.name} onChange={e => { const n = [...charactersList]; n[i].name = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                      <input type="text" placeholder="Gender" value={c.gender} onChange={e => { const n = [...charactersList]; n[i].gender = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                      <input type="text" placeholder="Age" value={c.age} onChange={e => { const n = [...charactersList]; n[i].age = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                      <input type="text" placeholder="Clothes" value={c.clothes} onChange={e => { const n = [...charactersList]; n[i].clothes = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                    </div>
+                    <input type="text" placeholder="Visual details (e.g. green eyes, tall)" value={c.visuals} onChange={e => { const n = [...charactersList]; n[i].visuals = e.target.value; setCharactersList(n); }} className="w-full p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'مستوى اللغة' : 'Language Difficulty'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'اختر مستوى اللغة للقصة' : 'Choose the language level for the story'}</div></div>
+              </label>
+              <select value={languageDifficulty} onChange={e => setLanguageDifficulty(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border">
+                <option value="Beginner">{lang === 'ar' ? 'مبتدئ' : 'Beginner'}</option>
+                <option value="Normal">{lang === 'ar' ? 'عادي' : 'Normal'}</option>
+                <option value="Advanced">{lang === 'ar' ? 'متقدم' : 'Advanced'}</option>
+              </select>
+            </div>
+
+            <div className="space-y-2 relative">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'التركيز النحوي' : 'Grammar Focus'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'مثال: أفعال الماضي، الصفات' : 'Example: Past tense, Adjectives'}</div></div>
+              </label>
+              <input type="text" value={grammarFocus} onChange={e => setGrammarFocus(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. Past tense verbs"/>
+            </div>
+
+            <div className="space-y-2 relative md:col-span-2">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'قائمة المفردات' : 'Vocab List'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'اكتب كلمات مفصولة بفاصلة لدمجها في القصة' : 'Comma-separated words to include in the story'}</div></div>
+              </label>
+              <input type="text" value={vocabList} onChange={e => setVocabList(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. sword, ancient, bravery"/>
+            </div>
+
+            <div className="space-y-2 relative md:col-span-2">
+              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {lang === 'ar' ? 'جمل ثابتة' : 'Fixed Lines'}
+                <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'جمل يجب أن تذكر كما هي' : 'Sentences that must appear exactly as written'}</div></div>
+              </label>
+              <textarea rows="2" value={fixedLines} onChange={e => setFixedLines(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. 'I am the master of the sword!'"></textarea>
+            </div>
+          </div>
+          
+          <div className="flex justify-end pt-4 mt-6 border-t border-slate-200 dark:border-slate-800">
+            <button
+              onClick={async () => {
+                setIsGeneratingText(true);
+                setStep(11);
+                try {
+                  const res = await fetch('/api/stories/generate-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      title: storyName, category: selectedCategory, characters: charactersList,
+                      mainIdea, events: eventsText, location: locationText, timePeriod,
+                      moral: moralText, outcome: outcomeText, languageDifficulty,
+                      grammarFocus, vocabList, fixedLines, lang
+                    })
+                  });
+                  const data = await res.json();
+                  if (data.success && data.storyText) {
+                    setPastedText(data.storyText);
+                    setStep(12);
+                  } else {
+                    setStep(10);
+                    alert("Failed to generate text.");
+                  }
+                } catch (err) {
+                  console.error(err);
+                  setStep(10);
+                } finally {
+                  setIsGeneratingText(false);
+                }
+              }}
+              disabled={isGeneratingText || !storyName}
+              className="px-8 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold transition-all shadow-lg flex items-center gap-2"
+            >
+              <Wand2 className="w-5 h-5"/>
+              <span>{lang === 'ar' ? 'توليد القصة بالذكاء الاصطناعي' : 'Generate Story with AI'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MAKE A STORY - Step 11: Loading Text */}
+      {step === 11 && (
+        <div className="glass-panel p-12 rounded-3xl text-center space-y-8 animate-fade-in">
+          <Wand2 className="w-16 h-16 text-amber-500 mx-auto animate-spin" />
+          <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+            {lang === 'ar' ? 'جاري كتابة القصة...' : 'Writing your story...'}
+          </h3>
+          <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+             <div className="bg-amber-500 h-full animate-pulse w-full"></div>
+          </div>
+        </div>
+      )}
+
+      {/* MAKE A STORY - Step 12: Review Text */}
+      {step === 12 && (
+        <div className="glass-panel p-8 rounded-3xl space-y-6 animate-fade-in">
+          <h3 className="text-2xl font-black text-slate-900 dark:text-white border-b pb-4">
+            {lang === 'ar' ? 'مراجعة النص المولد' : 'Review Generated Text'}
+          </h3>
+          <textarea rows="10" value={pastedText} onChange={e => setPastedText(e.target.value)} className="w-full p-4 rounded-xl bg-slate-100 dark:bg-slate-900 border text-base font-medium leading-relaxed"></textarea>
+          
+          <div className="flex justify-between pt-4 border-t">
+            <button onClick={() => setStep(10)} className="px-6 py-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 font-bold">
+              {lang === 'ar' ? 'تعديل المعطيات (Modify Story)' : 'Modify Story'}
+            </button>
+            <button
+              onClick={() => {
+                setWizardMode('convert');
+                setInputMethod('paste');
+                setStep(4);
+                handleAnalyzeText();
+              }}
+              className="px-8 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-2 shadow-lg"
+            >
+              <span>{lang === 'ar' ? 'تحويل النص إلى صور مسموعة (Convert Story)' : 'Convert Story'}</span>
+              <ArrowRight className="w-5 h-5"/>
+            </button>
+          </div>
+        </div>
+      )}
+
+
 
       {/* STEP 1: Story Name Input */}
       {step === 1 && (
@@ -365,7 +658,14 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
               className={`w-full px-5 py-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white ${lang === 'ar' ? 'font-arabic' : ''}`}
             />
           </div>
-          <div className={`flex ${lang === 'ar' ? 'justify-end' : 'justify-start'}`}>
+          <div className={`flex justify-between`}>
+            <button
+              type="button"
+              onClick={() => setStep(0)}
+              className="px-6 py-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold"
+            >
+              {lang === 'ar' ? 'عودة (Back)' : 'Back'}
+            </button>
             <button
               type="submit"
               disabled={!storyName.trim()}

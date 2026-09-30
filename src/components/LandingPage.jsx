@@ -1,11 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { Sparkles, Dices, ArrowLeft, ArrowRight, BookOpen, Star, Compass, Wand2, ShieldCheck, HeartHandshake, PhoneCall, Info } from 'lucide-react';
+import { Sparkles, Dices, ArrowLeft, ArrowRight, BookOpen, Star, Compass, Wand2, ShieldCheck, HeartHandshake, PhoneCall, Info, Users, FileText, Layers } from 'lucide-react';
 
 export default function LandingPage({ setCurrentView, setSelectedStoryId }) {
   const { lang, t } = useLanguage();
-  const { settings } = useAuth();
+  const { settings, user } = useAuth();
 
   const currentSiteName = (typeof settings?.siteName === 'object' && settings.siteName !== null
     ? (settings.siteName[lang] || settings.siteName.ar || settings.siteName.en)
@@ -15,28 +15,17 @@ export default function LandingPage({ setCurrentView, setSelectedStoryId }) {
     ? (settings.siteSubtitle[lang] || settings.siteSubtitle.ar || settings.siteSubtitle.en)
     : settings?.siteSubtitle) || t('appTagline');
 
-  const [isOpenEasterEgg, setIsOpenEasterEgg] = useState(false);
   const [showDiceTooltip, setShowDiceTooltip] = useState(false);
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const bookRef = useRef(null);
+  const [stats, setStats] = useState({ totalStories: 0, totalSlides: 0, totalUsers: 0 });
 
-  // Mouse tilt illusion logic for the 3D book
-  const handleMouseMove = (e) => {
-    if (!bookRef.current || isOpenEasterEgg) return;
-    const rect = bookRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - rect.width / 2;
-    const y = e.clientY - rect.top - rect.height / 2;
-    setTilt({
-      x: (y / rect.height) * -25,
-      y: (x / rect.width) * 25
-    });
-  };
-
-  const handleMouseLeave = () => {
-    if (!isOpenEasterEgg) {
-      setTilt({ x: 0, y: 0 });
-    }
-  };
+  useEffect(() => {
+    fetch('/api/statistics')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setStats(data.stats);
+      })
+      .catch(console.error);
+  }, []);
 
   // Trigger random story from backend
   const handleRandomStory = async () => {
@@ -44,6 +33,13 @@ export default function LandingPage({ setCurrentView, setSelectedStoryId }) {
       const res = await fetch('/api/stories?random=true');
       const data = await res.json();
       if (data.success && data.story) {
+        if (user) {
+          await fetch(`/api/stories/${data.story.id}/progress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ currentSlide: 0, completed: false, userId: user.id })
+          });
+        }
         setSelectedStoryId(data.story.id);
         setCurrentView('reader');
       } else {
@@ -74,109 +70,63 @@ export default function LandingPage({ setCurrentView, setSelectedStoryId }) {
           )}
         </h2>
 
-        {/* 3D Hovering Book Component with Secret Easter Egg */}
-        <div className="perspective-1000 my-8 relative flex items-center justify-center">
-          <div
-            ref={bookRef}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-            className={`book-container ${isOpenEasterEgg ? 'open-book' : ''}`}
-            style={{
-              transform: isOpenEasterEgg
-                ? 'rotateY(-15deg) scale(1.05)'
-                : `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`
-            }}
-          >
-            {/* Secret Easter Egg Ribbon / Bookmark */}
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsOpenEasterEgg(!isOpenEasterEgg);
-              }}
-              className="easter-egg-ribbon group flex flex-col items-center justify-end pb-2"
-              title={t('easterEggHint')}
-            >
-              <span className="text-[9px] font-black text-white uppercase tracking-tighter opacity-90 group-hover:scale-110">
-                msoms
-              </span>
-            </div>
-
-            {/* Book Outer Cover */}
-            <div className="book-cover border-2 border-indigo-400/30">
-              <div className="flex justify-between items-center text-amber-300">
-                <Sparkles className="w-6 h-6 animate-spin" />
-                <span className="text-xs font-bold tracking-widest uppercase opacity-80">QISAS 2026</span>
-              </div>
-              
-              <div className="text-center">
-                <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 border border-amber-500/40">
-                  <BookOpen className="w-8 h-8" />
-                </div>
-                <h3 className="text-2xl font-black text-white font-arabic">{currentSiteName}</h3>
-                <p className="text-xs text-indigo-200 mt-1">قصص الأطفال المبتكرة</p>
-              </div>
-
-              <div className="text-center text-[10px] text-slate-300">
-                <span>{lang === 'ar' ? 'انقر على الشريط لكشف السر' : 'Click ribbon to open secret'}</span>
-              </div>
-            </div>
-
-            {/* Book Interior - Reveals msoms.ai when opened! */}
-            <div className="book-inside">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white font-black text-xl mb-3 shadow-lg animate-pulse">
-                ai
-              </div>
-              <h4 className="text-lg font-black text-slate-900 dark:text-slate-900 font-arabic">
-                {t('easterEggTitle')}
-              </h4>
-              <p className="text-xs text-slate-600 font-medium my-2">
-                {t('easterEggSub')}
-              </p>
-              <div className="px-3 py-1.5 rounded-full bg-indigo-600 text-white font-black text-sm tracking-wider shadow-md">
-                {t('easterEggBrand')}
-              </div>
-            </div>
-
-          </div>
+        {/* Flying Books Background */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-20">
+          <div className="absolute left-[15%]" style={{animation: 'floatUp 18s linear infinite 0s'}}><BookOpen className="w-12 h-12 text-slate-400" /></div>
+          <div className="absolute left-[45%]" style={{animation: 'floatUp 22s linear infinite 5s'}}><BookOpen className="w-8 h-8 text-blue-300" /></div>
+          <div className="absolute left-[75%]" style={{animation: 'floatUp 25s linear infinite 2s'}}><BookOpen className="w-16 h-16 text-emerald-200" /></div>
+          <div className="absolute left-[90%]" style={{animation: 'floatUp 20s linear infinite 8s'}}><BookOpen className="w-10 h-10 text-amber-200" /></div>
+          <style>{`
+            @keyframes floatUp {
+              0% { transform: translateY(100vh) rotate(0deg) scale(0.8); opacity: 0; }
+              20% { opacity: 0.8; }
+              80% { opacity: 0.8; }
+              100% { transform: translateY(-20vh) rotate(360deg) scale(1.2); opacity: 0; }
+            }
+          `}</style>
         </div>
 
-        {/* Action Buttons Row: Creative Out of the Box Button + Hovering Dice */}
-        <div className="flex flex-wrap items-center justify-center gap-4 mt-6">
+        {/* Action Buttons Row: Massive CTA + Secondary */}
+        <div className="flex flex-col items-center justify-center gap-6 mt-12 relative z-10 w-full max-w-lg mx-auto">
           
-          {/* Creative Out of the box button */}
+          {/* Massive CTA */}
           <button
             onClick={() => setCurrentView('wizard')}
-            className="group relative px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white font-black text-lg shadow-xl shadow-amber-500/30 hover:shadow-2xl hover:shadow-amber-500/50 hover:scale-105 active:scale-95 transition-all duration-300 flex items-center gap-3 overflow-hidden"
+            className="group relative w-full py-6 rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white font-black text-2xl shadow-2xl shadow-amber-500/40 hover:shadow-amber-500/60 hover:scale-105 active:scale-95 transition-all duration-300 flex flex-col items-center justify-center gap-2 overflow-hidden border-4 border-amber-300/30"
           >
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-            <Wand2 className="w-6 h-6 animate-bounce" />
+            <Wand2 className="w-10 h-10 animate-bounce" />
             <span className="relative z-10">{t('generateStory')}</span>
-            {lang === 'ar' ? <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" /> : <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
           </button>
 
-          {/* Hovering Dice Button */}
-          <div className="relative">
-            <button
-              onClick={handleRandomStory}
-              onMouseEnter={() => setShowDiceTooltip(true)}
-              onMouseLeave={() => setShowDiceTooltip(false)}
-              className="floating-element p-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl shadow-indigo-600/30 hover:scale-110 active:scale-90 transition-all duration-300 border-2 border-indigo-400/40"
-              aria-label="Read a random story"
-            >
-              <Dices className="w-7 h-7 text-amber-300 animate-spin-slow" />
-            </button>
-
-            {/* Hover Tooltip: "Read a random story!" in EN / "فاجئني بقصة!" in AR */}
-            {showDiceTooltip && (
-              <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 whitespace-nowrap px-4 py-2 rounded-xl bg-slate-900 text-amber-300 text-xs font-bold shadow-xl border border-amber-500/30 animate-fade-in z-30">
-                {t('diceTooltip')}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
-              </div>
-            )}
-          </div>
-
+          {/* Secondary Button */}
+          <button
+            onClick={handleRandomStory}
+            className="group relative w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xl shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all duration-300 flex items-center justify-center gap-3 border-2 border-indigo-400/40"
+          >
+            <Dices className="w-6 h-6 text-amber-300 group-hover:animate-spin" />
+            <span>{t('diceTooltip')}</span>
+          </button>
         </div>
+      </div>
 
+      {/* Statistics Section */}
+      <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-6 mb-16 max-w-4xl mx-auto w-full">
+        <div className="glass-panel p-6 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-2">
+          <FileText className="w-8 h-8 text-indigo-500 mb-2" />
+          <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalStories}</div>
+          <div className="text-sm font-bold text-slate-500">{lang === 'ar' ? 'قصة مكتوبة' : 'Stories Written'}</div>
+        </div>
+        <div className="glass-panel p-6 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-2">
+          <Layers className="w-8 h-8 text-amber-500 mb-2" />
+          <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalSlides}</div>
+          <div className="text-sm font-bold text-slate-500">{lang === 'ar' ? 'شريحة مقروءة' : 'Slides Read'}</div>
+        </div>
+        <div className="glass-panel p-6 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-2">
+          <Users className="w-8 h-8 text-emerald-500 mb-2" />
+          <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalUsers}</div>
+          <div className="text-sm font-bold text-slate-500">{lang === 'ar' ? 'عضو مسجل' : 'Registered Users'}</div>
+        </div>
       </div>
 
       {/* Footer Navigation (4 separate links + Credit) */}

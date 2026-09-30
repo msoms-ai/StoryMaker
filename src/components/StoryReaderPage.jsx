@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import confetti from 'canvas-confetti';
 import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import EnhancedAudioPlayer from './EnhancedAudioPlayer';
 
 export default function StoryReaderPage({ storyId, setCurrentView, setViewingUserId }) {
   const { lang, dir, t } = useLanguage();
+  const { user } = useAuth();
   
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -20,7 +22,8 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   // Fetch story data by storyId
   useEffect(() => {
     if (!storyId) return;
-    fetch(`/api/stories/${storyId}`)
+    const fetchUrl = `/api/stories/${storyId}${user ? `?userId=${user.id}` : ''}`;
+    fetch(fetchUrl)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.story) {
@@ -85,11 +88,11 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
   // Save progress back to server DB
   const saveProgress = (slideIndex, isCompleted) => {
-    if (!story) return;
+    if (!story || !user) return;
     fetch(`/api/stories/${story.id}/progress`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentSlide: slideIndex, completed: isCompleted })
+      body: JSON.stringify({ currentSlide: slideIndex, completed: isCompleted, userId: user.id })
     }).catch(console.error);
   };
 
