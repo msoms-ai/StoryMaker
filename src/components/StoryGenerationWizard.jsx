@@ -511,7 +511,11 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <input type="text" placeholder="Name" value={c.name} onChange={e => { const n = [...charactersList]; n[i].name = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
-                      <input type="text" placeholder="Gender" value={c.gender} onChange={e => { const n = [...charactersList]; n[i].gender = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                      <select value={c.gender} onChange={e => { const n = [...charactersList]; n[i].gender = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900 text-slate-500">
+                        <option value="">Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
                       <input type="text" placeholder="Age" value={c.age} onChange={e => { const n = [...charactersList]; n[i].age = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
                       <input type="text" placeholder="Clothes" value={c.clothes} onChange={e => { const n = [...charactersList]; n[i].clothes = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
                     </div>
