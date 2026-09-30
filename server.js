@@ -1156,7 +1156,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         console.log(`[File Extractor] Using Gemini Multimodal OCR Vision API to extract text from PDF...`);
         try {
           const pdfBase64 = dataBuffer.toString('base64');
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
           const visionRes = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

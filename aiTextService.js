@@ -74,7 +74,7 @@ Source Story Text:
 ${storyContent}
 """`;
 
-    const models = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-flash-latest'];
+    const models = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest'];
 
     for (const model of models) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -270,7 +270,7 @@ Output JSON format ONLY:
 {
   "storyText": "Once upon a time..."
 }`;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
   
   const res = await fetch(url, {
     method: 'POST',
