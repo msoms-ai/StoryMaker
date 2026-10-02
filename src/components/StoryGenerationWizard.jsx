@@ -251,7 +251,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
           lang,
           slides: finalSlides,
           comments: redoComments,
-          userId: user?.id
+          userId: user?.id,
+          isAiGenerated: sessionStorage.getItem('wizard_wasAiMade') === 'true'
         })
       });
 
@@ -630,6 +631,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
             </button>
             <button
               onClick={() => {
+                sessionStorage.setItem('wizard_wasAiMade', 'true');
                 setWizardMode('convert');
                 setInputMethod('paste');
                 setStep(4);

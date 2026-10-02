@@ -22,6 +22,19 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
   // Split text into individual words for real-time highlighting
   const words = (text || '').trim().split(/\s+/).filter(w => w.length > 0);
 
+  // Build character-weighted ranges for much more accurate audio syncing
+  // (Long words take longer to speak than short words)
+  const wordCharRanges = [];
+  let charCounter = 0;
+  for (let i = 0; i < words.length; i++) {
+    const start = charCounter;
+    charCounter += words[i].length;
+    const end = charCounter;
+    wordCharRanges.push({ start, end, wordIndex: i });
+    charCounter += 1; // space
+  }
+  const totalChars = charCounter > 0 ? charCounter - 1 : 1;
+
   useEffect(() => {
     stopAudio();
     setCurrentTime(0);
@@ -89,8 +102,15 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
 
         if (words.length > 0) {
           const ratio = Math.min(cur / dur, 0.999);
-          const wordIdx = Math.floor(ratio * words.length);
-          setActiveWordIndex(wordIdx);
+          const targetChar = ratio * totalChars;
+          
+          let foundIdx = 0;
+          for (let i = 0; i < wordCharRanges.length; i++) {
+            if (targetChar >= wordCharRanges[i].start) {
+              foundIdx = wordCharRanges[i].wordIndex;
+            }
+          }
+          setActiveWordIndex(foundIdx);
         }
       }
       animationFrameId = requestAnimationFrame(updateLoop);

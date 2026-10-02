@@ -805,7 +805,12 @@ app.get('/api/statistics', (req, res) => {
   const totalStories = db.stories.length;
   const totalSlides = db.stories.reduce((acc, story) => acc + (story.slidesCount || story.slides?.length || 0), 0);
   const totalUsers = db.users.length;
-  res.json({ success: true, stats: { totalStories, totalSlides, totalUsers } });
+  const totalAiGeneratedStories = db.stories.filter(s => s.isAiGenerated === true).length;
+  const totalConvertedStories = totalStories - totalAiGeneratedStories;
+  // Estimate 15 seconds of voice per slide (15/60 = 0.25 minutes)
+  const totalMinutesVoice = Math.round(totalSlides * 0.25);
+  
+  res.json({ success: true, stats: { totalStories, totalSlides, totalUsers, totalAiGeneratedStories, totalConvertedStories, totalMinutesVoice } });
 });
 
 // GET /api/admin/settings - Admin settings
@@ -1501,7 +1506,7 @@ app.post('/api/stories/generate-slide-voice', async (req, res) => {
 
 // 4. POST /api/stories/finalize-generation
 app.post('/api/stories/finalize-generation', async (req, res) => {
-  const { storyId, folderName, title, category, lang, slides, comments, userId } = req.body;
+  const { storyId, folderName, title, category, lang, slides, comments, userId, isAiGenerated } = req.body;
   const db = readDB();
 
   const isArabic = lang === 'ar' || /[\u0600-\u06FF]/.test(title);
@@ -1529,6 +1534,7 @@ app.post('/api/stories/finalize-generation', async (req, res) => {
     lang: isArabic ? 'ar' : 'en',
     readTimeMinutes: Math.ceil(slides.length * 0.8),
     slidesCount: slides.length,
+    isAiGenerated: isAiGenerated === true,
     status: 'draft',
     authorId: userId || null,
     authorName,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { Sparkles, Dices, ArrowLeft, ArrowRight, BookOpen, Star, Compass, Wand2, ShieldCheck, HeartHandshake, PhoneCall, Info, Users, FileText, Layers } from 'lucide-react';
+import { Sparkles, Dices, ArrowLeft, ArrowRight, BookOpen, Star, Compass, Wand2, ShieldCheck, HeartHandshake, PhoneCall, Info, Users, FileText, Layers, Mic } from 'lucide-react';
 
 export default function LandingPage({ setCurrentView, setSelectedStoryId }) {
   const { lang, t } = useLanguage();
@@ -111,21 +111,31 @@ export default function LandingPage({ setCurrentView, setSelectedStoryId }) {
       </div>
 
       {/* Statistics Section */}
-      <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-6 mb-16 max-w-4xl mx-auto w-full">
-        <div className="glass-panel p-6 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-2">
-          <FileText className="w-8 h-8 text-indigo-500 mb-2" />
-          <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalStories}</div>
-          <div className="text-sm font-bold text-slate-500">{lang === 'ar' ? 'قصة مكتوبة' : 'Stories Written'}</div>
+      <div className="relative z-10 grid grid-cols-2 md:grid-cols-5 gap-4 mb-16 max-w-6xl mx-auto w-full">
+        <div className="glass-panel p-4 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-1">
+          <Sparkles className="w-6 h-6 text-indigo-500 mb-1" />
+          <div className="text-2xl font-black text-slate-900 dark:text-white">{stats.totalAiGeneratedStories || 0}</div>
+          <div className="text-xs font-bold text-slate-500">{lang === 'ar' ? 'قصص الذكاء الاصطناعي' : 'AI Stories'}</div>
         </div>
-        <div className="glass-panel p-6 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-2">
-          <Layers className="w-8 h-8 text-amber-500 mb-2" />
-          <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalSlides}</div>
-          <div className="text-sm font-bold text-slate-500">{lang === 'ar' ? 'شريحة مقروءة' : 'Slides Read'}</div>
+        <div className="glass-panel p-4 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-1">
+          <FileText className="w-6 h-6 text-blue-500 mb-1" />
+          <div className="text-2xl font-black text-slate-900 dark:text-white">{stats.totalConvertedStories || 0}</div>
+          <div className="text-xs font-bold text-slate-500">{lang === 'ar' ? 'القصص المحولة' : 'Converted Stories'}</div>
         </div>
-        <div className="glass-panel p-6 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-2">
-          <Users className="w-8 h-8 text-emerald-500 mb-2" />
-          <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalUsers}</div>
-          <div className="text-sm font-bold text-slate-500">{lang === 'ar' ? 'عضو مسجل' : 'Registered Users'}</div>
+        <div className="glass-panel p-4 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-1">
+          <Layers className="w-6 h-6 text-amber-500 mb-1" />
+          <div className="text-2xl font-black text-slate-900 dark:text-white">{stats.totalSlides}</div>
+          <div className="text-xs font-bold text-slate-500">{lang === 'ar' ? 'إجمالي الشرائح' : 'Total Slides'}</div>
+        </div>
+        <div className="glass-panel p-4 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-1">
+          <Mic className="w-6 h-6 text-pink-500 mb-1" />
+          <div className="text-2xl font-black text-slate-900 dark:text-white">{stats.totalMinutesVoice || 0}</div>
+          <div className="text-xs font-bold text-slate-500">{lang === 'ar' ? 'دقائق صوتية' : 'Voice Minutes'}</div>
+        </div>
+        <div className="glass-panel p-4 rounded-2xl text-center border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col items-center justify-center gap-1 col-span-2 md:col-span-1">
+          <Users className="w-6 h-6 text-emerald-500 mb-1" />
+          <div className="text-2xl font-black text-slate-900 dark:text-white">{stats.totalUsers}</div>
+          <div className="text-xs font-bold text-slate-500">{lang === 'ar' ? 'المستخدمين' : 'Users'}</div>
         </div>
       </div>
 
