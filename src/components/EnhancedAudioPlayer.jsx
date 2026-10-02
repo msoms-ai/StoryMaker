@@ -35,13 +35,30 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
   }
   const totalChars = charCounter > 0 ? charCounter - 1 : 1;
 
+  const [timepoints, setTimepoints] = useState(null);
+
   useEffect(() => {
     stopAudio();
     setCurrentTime(0);
     setDuration(0);
     setActiveWordIndex(-1);
+    setTimepoints(null);
 
     if (audioUrl) {
+      // Attempt to load exact SSML timepoints
+      const tpUrl = audioUrl.replace('.mp3', '_timepoints.json');
+      fetch(tpUrl)
+        .then(res => {
+          if (res.ok) return res.json();
+          return null;
+        })
+        .then(data => {
+          if (data && Array.isArray(data)) {
+            setTimepoints(data);
+          }
+        })
+        .catch(() => {});
+
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
 
@@ -100,7 +117,19 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
         let dur = (audio.duration && isFinite(audio.duration)) ? audio.duration : duration;
         if (!dur || dur <= 0) dur = Math.max(1, words.length / 2.5); // Fallback estimate
 
-        if (words.length > 0) {
+        if (timepoints && timepoints.length > 0) {
+          // Exact precision via SSML Timepoints
+          let foundIdx = -1;
+          for (let i = 0; i < timepoints.length; i++) {
+            if (cur >= timepoints[i].timeSeconds) {
+              foundIdx = parseInt(timepoints[i].markName, 10);
+            } else {
+              break;
+            }
+          }
+          if (foundIdx >= 0) setActiveWordIndex(foundIdx);
+        } else if (words.length > 0) {
+          // Mathematical character-weighted estimation (fallback)
           const ratio = Math.min(cur / dur, 0.999);
           const targetChar = ratio * totalChars;
           
@@ -123,7 +152,7 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [isPlaying, duration, words.length]);
+  }, [isPlaying, duration, words.length, timepoints]);
 
   const stopAudio = () => {
     if (audioRef.current) {

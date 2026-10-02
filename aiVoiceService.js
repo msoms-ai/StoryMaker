@@ -25,13 +25,35 @@ export async function generateAndSaveSlideVoice({
   lang = 'ar',
   voiceGender = 'male'
 }) {
-  console.log(`[AI Voice Service] Generating Voice Narration for Slide ${slideIndex + 1} via Google Cloud Neural2...`);
+  console.log(`[AI Voice Service] Generating Voice Narration for Slide ${slideIndex + 1} via Google Cloud Chirp3-HD...`);
   
   const fileName = `slide_${slideIndex + 1}.mp3`;
   const filePath = path.join(outputDir, fileName);
+  const timepointsFileName = `slide_${slideIndex + 1}_timepoints.json`;
+  const timepointsFilePath = path.join(outputDir, timepointsFileName);
+
+  // Clean the text to avoid breaking SSML
+  const safeText = (slideText || '').replace(/[&<>"']/g, (m) => {
+    switch (m) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#039;';
+      default: return m;
+    }
+  });
+
+  // Split into words and wrap each with a mark tag
+  const words = safeText.trim().split(/\s+/).filter(w => w.length > 0);
+  let ssmlText = '<speak>';
+  words.forEach((word, idx) => {
+    ssmlText += `<mark name="${idx}"/>${word} `;
+  });
+  ssmlText += '</speak>';
 
   const request = {
-    input: { text: slideText },
+    input: { ssml: ssmlText },
     voice: {
       languageCode: lang === 'ar' ? 'ar-XA' : 'en-US',
       name: lang === 'ar' 
@@ -42,12 +64,19 @@ export async function generateAndSaveSlideVoice({
       audioEncoding: 'MP3',
       speakingRate: 0.95 // slightly slower for better storytelling pace
     },
+    enableTimePointing: ['SSML_MARK']
   };
 
   try {
     const [response] = await client.synthesizeSpeech(request);
     fs.writeFileSync(filePath, response.audioContent, 'binary');
-    console.log(`[AI Voice Service] Successfully saved compressed Neural2 AI Voiceover: ${fileName}`);
+    
+    // Save the timepoints data
+    if (response.timepoints && response.timepoints.length > 0) {
+      fs.writeFileSync(timepointsFilePath, JSON.stringify(response.timepoints, null, 2));
+    }
+    
+    console.log(`[AI Voice Service] Successfully saved Chirp3-HD AI Voiceover and Timepoints: ${fileName}`);
     return fileName;
   } catch (err) {
     console.error(`[AI Voice Service] Google Cloud TTS error for Slide ${slideIndex + 1}: ${err.message}`);
