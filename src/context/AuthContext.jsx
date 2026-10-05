@@ -70,69 +70,86 @@ export function AuthProvider({ children }) {
   };
 
   const login = async (email, password) => {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (data.success && data.token) {
-      localStorage.setItem('qisas_token', data.token);
-      setToken(data.token);
-      setUser(data.user);
-      setAuthModalOpen(false);
-      return { success: true };
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!res.ok && res.headers.get('content-type')?.includes('text/html')) {
+        return { success: false, message: 'Server Configuration Error: The API is returning HTML instead of JSON. Ensure Node.js is running and routing /api requests on Plesk.' };
+      }
+      const data = await res.json();
+      if (data.success && data.token) {
+        localStorage.setItem('qisas_token', data.token);
+        setToken(data.token);
+        setUser(data.user);
+        setAuthModalOpen(false);
+        return { success: true };
+      }
+      if (data.unverified) {
+        setOtpEmail(email);
+        setOtpNotice(data.message);
+        setAuthModalTab('otp');
+        return { success: false, unverified: true, message: data.message };
+      }
+      return { success: false, message: data.message || 'Login failed' };
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: 'Network error or server unreachable. Please check your Plesk configuration.' };
     }
-    if (data.unverified) {
-      setOtpEmail(email);
-      setOtpNotice(data.message);
-      setAuthModalTab('otp');
-      return { success: false, unverified: true, message: data.message };
-    }
-    return { success: false, message: data.message || 'Login failed' };
   };
 
   const signup = async ({ email, password, firstName, lastName, lang = 'ar' }) => {
-    const res = await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, firstName, lastName, lang })
-    });
-    const data = await res.json();
-    if (data.success) {
-      setOtpEmail(email);
-      setOtpNotice(data.message);
-      setAuthModalTab('otp');
-      return { success: true, devOtp: data.devOtp };
-    }
-    return { success: false, message: data.message || 'Signup failed' };
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, firstName, lastName, lang })
+      });
+      if (!res.ok && res.headers.get('content-type')?.includes('text/html')) return { success: false, message: 'Server Configuration Error.' };
+      const data = await res.json();
+      if (data.success) {
+        setOtpEmail(email);
+        setOtpNotice(data.message);
+        setAuthModalTab('otp');
+        return { success: true, devOtp: data.devOtp };
+      }
+      return { success: false, message: data.message || 'Signup failed' };
+    } catch (err) { return { success: false, message: 'Network error.' }; }
   };
 
   const verifyOtp = async (otpCode) => {
-    const res = await fetch('/api/auth/verify-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: otpEmail, otpCode })
-    });
-    const data = await res.json();
-    if (data.success && data.token) {
-      localStorage.setItem('qisas_token', data.token);
-      setToken(data.token);
-      setUser(data.user);
-      setAuthModalOpen(false);
-      return { success: true };
-    }
-    return { success: false, message: data.message || 'Verification failed' };
+    try {
+      const res = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: otpEmail, otpCode })
+      });
+      if (!res.ok && res.headers.get('content-type')?.includes('text/html')) return { success: false, message: 'Server Configuration Error.' };
+      const data = await res.json();
+      if (data.success && data.token) {
+        localStorage.setItem('qisas_token', data.token);
+        setToken(data.token);
+        setUser(data.user);
+        setAuthModalOpen(false);
+        return { success: true };
+      }
+      return { success: false, message: data.message || 'Verification failed' };
+    } catch (err) { return { success: false, message: 'Network error.' }; }
   };
 
   const resendOtp = async (lang = 'ar') => {
-    const res = await fetch('/api/auth/resend-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: otpEmail, lang })
-    });
-    const data = await res.json();
-    return data;
+    try {
+      const res = await fetch('/api/auth/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: otpEmail, lang })
+      });
+      if (!res.ok && res.headers.get('content-type')?.includes('text/html')) return { success: false, message: 'Server Configuration Error.' };
+      const data = await res.json();
+      return data;
+    } catch (err) { return { success: false, message: 'Network error.' }; }
   };
 
   const logout = () => {
