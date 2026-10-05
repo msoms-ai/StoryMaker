@@ -410,10 +410,10 @@ export function UpdatesPage({ setCurrentView }) {
           </div>
           <div>
             <h2 className="text-3xl font-black text-slate-900 dark:text-white">
-              {lang === 'ar' ? '????????? ??????????' : 'Platform Updates & Releases'}
+              {lang === 'ar' ? 'التحديثات والإصدارات' : 'Platform Updates & Releases'}
             </h2>
             <p className="text-sm text-slate-500">
-              {lang === 'ar' ? '???? ??? ???? ??????? ??????? ????? ???? ?????' : 'Discover the latest features added to the StoryMaker platform'}
+              {lang === 'ar' ? 'تعرف على أحدث الميزات المضافة لمنصة صانع القصص' : 'Discover the latest features added to the StoryMaker platform'}
             </p>
           </div>
         </div>
@@ -422,27 +422,27 @@ export function UpdatesPage({ setCurrentView }) {
           <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 relative overflow-hidden">
             <div className="absolute top-0 right-0 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl">v1.1.0</div>
             <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
-              {lang === 'ar' ? '????? ????? ??????? ????????? ????????? ????????' : 'AI Story Wizard & Advanced Audio Update'}
+              {lang === 'ar' ? 'تحديث القصص بالذكاء الاصطناعي والصوتيات المتقدمة' : 'AI Story Wizard & Advanced Audio Update'}
             </h3>
             <p className="text-sm text-slate-500 mb-4">October 2026</p>
             <ul className="list-disc list-inside space-y-2 text-slate-700 dark:text-slate-300">
-              <li>{lang === 'ar' ? '????? ????? ???? ????? (Make a Story) ?????? ??? ?? ????? ??????? ?????.' : 'Added the "Make a Story" Wizard to build stories from scratch with deep details.'}</li>
-              <li>{lang === 'ar' ? '????? ????? ?????? ????????? ??? ????? Google Cloud Chirp3-HD ????? ?????.' : 'Upgraded AI Voices to ultra-realistic Google Cloud Chirp3-HD models.'}</li>
-              <li>{lang === 'ar' ? '????? ????? ?????? (Word-level Timestamps) ???????? ????? SSML.' : 'Perfect Word-level Timestamp synchronization using SSML tags.'}</li>
-              <li>{lang === 'ar' ? '??? ????? ???? ?????? ????? (????? ????? ?????? ???).' : 'Support for multiple image art styles (Anime, Watercolor, etc).'}</li>
-              <li>{lang === 'ar' ? '????? ???? ????? ?????????? ????? ????????.' : 'Comprehensive overhaul of the Statistics page and Help Center.'}</li>
+              <li>{lang === 'ar' ? 'إضافة معالج بناء القصص (Make a Story) لإنشاء قصص من الصفر بتفاصيل دقيقة.' : 'Added the "Make a Story" Wizard to build stories from scratch with deep details.'}</li>
+              <li>{lang === 'ar' ? 'تحديث أصوات الذكاء الاصطناعي إلى نماذج Google Cloud Chirp3-HD فائقة الدقة.' : 'Upgraded AI Voices to ultra-realistic Google Cloud Chirp3-HD models.'}</li>
+              <li>{lang === 'ar' ? 'تزامن مثالي للنصوص (Word-level Timestamps) باستخدام تقنية SSML.' : 'Perfect Word-level Timestamp synchronization using SSML tags.'}</li>
+              <li>{lang === 'ar' ? 'دعم أنماط فنية متعددة للصور (أنمي، ألوان مائية، إلخ).' : 'Support for multiple image art styles (Anime, Watercolor, etc).'}</li>
+              <li>{lang === 'ar' ? 'تحديث شامل لصفحة الإحصائيات ومركز المساعدة.' : 'Comprehensive overhaul of the Statistics page and Help Center.'}</li>
             </ul>
           </div>
           
           <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
-              {lang === 'ar' ? '??????? 1.0.0 (??????? ??????)' : 'Version 1.0.0 (Initial Release)'}
+              {lang === 'ar' ? 'الإصدار 1.0.0 (الإطلاق الأولي)' : 'Version 1.0.0 (Initial Release)'}
             </h3>
             <p className="text-sm text-slate-500 mb-4">September 2026</p>
             <ul className="list-disc list-inside space-y-2 text-slate-700 dark:text-slate-300">
-              <li>{lang === 'ar' ? '????? ???? ??? ???????? ?????? ?????? ??? ????? ??????.' : 'Launched the core Qisas platform for text-to-slide conversion.'}</li>
-              <li>{lang === 'ar' ? '??? ????? ????? ???????? ????? Gemini.' : 'Support for image generation using Gemini models.'}</li>
-              <li>{lang === 'ar' ? '???? ????????? ???????? ????? ???? ????????.' : 'Membership system, packages, and admin dashboard.'}</li>
+              <li>{lang === 'ar' ? 'إطلاق منصة قصص الأساسية لتحويل النصوص إلى شرائح مسموعة.' : 'Launched the core Qisas platform for text-to-slide conversion.'}</li>
+              <li>{lang === 'ar' ? 'دعم توليد الصور باستخدام نماذج Gemini.' : 'Support for image generation using Gemini models.'}</li>
+              <li>{lang === 'ar' ? 'نظام العضويات، الباقات، ولوحة تحكم المشرفين.' : 'Membership system, packages, and admin dashboard.'}</li>
             </ul>
           </div>
         </div>
