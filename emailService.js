@@ -178,20 +178,21 @@ export async function sendPackagePurchaseEmail({ toEmail, packageName, storiesAd
     console.warn(`[Email Service] Receipt email notice:`, err.message);
   }
 }
+
 export async function sendFeedbackEmail({ name, email, type, message }) {
   const mailOptions = {
-    from: \"\ via Qisas" <\>\,
+    from: `"${name} via Qisas" <${process.env.SMTP_FROM_EMAIL || 'noreply@sg.msoms.ai'}>`,
     to: 'feedback@msoms.ai',
     replyTo: email,
-    subject: \[\] Qisas Platform Feedback from \\,
-    html: \
+    subject: `[${type.toUpperCase()}] Qisas Platform Feedback from ${name}`,
+    html: `
       <h3>New Feedback Received</h3>
-      <p><strong>Name:</strong> \</p>
-      <p><strong>Email:</strong> \</p>
-      <p><strong>Type:</strong> \</p>
+      <p><strong>Name:</strong> ${name}</p>
+      <p><strong>Email:</strong> ${email}</p>
+      <p><strong>Type:</strong> ${type}</p>
       <hr />
-      <p>\</p>
-    \
+      <p>${message}</p>
+    `
   };
   await transporter.sendMail(mailOptions);
 }
