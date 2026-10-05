@@ -448,7 +448,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'الفكرة الرئيسية' : 'Main Idea'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'عن ماذا تتحدث القصة بكلمات قليلة؟' : 'What is the story about in a few words?'}</div></div>
               </label>
-              <input type="text" value={mainIdea} onChange={e => setMainIdea(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. A boy finding a magical sword"/>
+              <input type="text" value={mainIdea} onChange={e => setMainIdea(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'مثال: فتى يجد سيفاً سحرياً' : 'e.g. A boy finding a magical sword'}/>
             </div>
             
             <div className="space-y-2 relative md:col-span-2">
@@ -456,7 +456,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'أحداث القصة' : 'Story Events'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'اكتب باختصار الأحداث التي تريدها في القصة' : 'Briefly describe the events you want to happen'}</div></div>
               </label>
-              <textarea rows="3" value={eventsText} onChange={e => setEventsText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. The boy wanders into the forest, meets a fairy, and solves a riddle..."></textarea>
+              <textarea rows="3" value={eventsText} onChange={e => setEventsText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'مثال: يتجول الفتى في الغابة ويقابل جنية ويحل لغزاً...' : 'e.g. The boy wanders into the forest, meets a fairy, and solves a riddle...'}></textarea>
             </div>
             
             <div className="space-y-2 relative">
@@ -464,7 +464,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'المكان' : 'Location'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'مثال: غابة سحرية، مدينة حديثة' : 'Example: Magical Forest, Modern City'}</div></div>
               </label>
-              <input type="text" value={locationText} onChange={e => setLocationText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="Location..."/>
+              <input type="text" value={locationText} onChange={e => setLocationText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'المكان...' : 'Location...'}/>
             </div>
             
             <div className="space-y-2 relative">
@@ -472,7 +472,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'الزمان' : 'Time Period'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'مثال: في العصور الوسطى، المستقبل' : 'Example: Middle Ages, Future'}</div></div>
               </label>
-              <input type="text" value={timePeriod} onChange={e => setTimePeriod(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="Time Period..."/>
+              <input type="text" value={timePeriod} onChange={e => setTimePeriod(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'الزمان...' : 'Time Period...'}/>
             </div>
 
             <div className="space-y-2 relative">
@@ -480,7 +480,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'العبرة (الهدف)' : 'Moral'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'الدرس المستفاد من القصة' : 'The lesson learned'}</div></div>
               </label>
-              <input type="text" value={moralText} onChange={e => setMoralText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. Always be honest"/>
+              <input type="text" value={moralText} onChange={e => setMoralText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'مثال: كن صادقاً دائماً' : 'e.g. Always be honest'}/>
             </div>
 
             <div className="space-y-2 relative">
@@ -488,7 +488,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'النهاية' : 'Outcome'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'كيف تنتهي القصة؟ سعيد؟ غامض؟' : 'How does it end? Happy? Mysterious?'}</div></div>
               </label>
-              <input type="text" value={outcomeText} onChange={e => setOutcomeText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="Outcome..."/>
+              <input type="text" value={outcomeText} onChange={e => setOutcomeText(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'النهاية...' : 'Outcome...'}/>
             </div>
 
             <div className="space-y-2 relative md:col-span-2">
@@ -505,22 +505,22 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {charactersList.map((c, i) => (
                   <div key={i} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border flex flex-col gap-3">
                     <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-sm">Character {i+1}</h4>
+                      <h4 className="font-bold text-sm">{lang === 'ar' ? `الشخصية ${i+1}` : `Character ${i+1}`}</h4>
                       <button onClick={() => setCharactersList(charactersList.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      <input type="text" placeholder="Name" value={c.name} onChange={e => { const n = [...charactersList]; n[i].name = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                      <input type="text" placeholder={lang === 'ar' ? 'الاسم' : 'Name'} value={c.name} onChange={e => { const n = [...charactersList]; n[i].name = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
                       <select value={c.gender} onChange={e => { const n = [...charactersList]; n[i].gender = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900 text-slate-500">
-                        <option value="">Gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
+                        <option value="">{lang === 'ar' ? 'الجنس' : 'Gender'}</option>
+                        <option value="Male">{lang === 'ar' ? 'ذكر' : 'Male'}</option>
+                        <option value="Female">{lang === 'ar' ? 'أنثى' : 'Female'}</option>
                       </select>
-                      <input type="text" placeholder="Age" value={c.age} onChange={e => { const n = [...charactersList]; n[i].age = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
-                      <input type="text" placeholder="Clothes" value={c.clothes} onChange={e => { const n = [...charactersList]; n[i].clothes = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                      <input type="text" placeholder={lang === 'ar' ? 'العمر' : 'Age'} value={c.age} onChange={e => { const n = [...charactersList]; n[i].age = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                      <input type="text" placeholder={lang === 'ar' ? 'الملابس' : 'Clothes'} value={c.clothes} onChange={e => { const n = [...charactersList]; n[i].clothes = e.target.value; setCharactersList(n); }} className="p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
                     </div>
-                    <input type="text" placeholder="Visual details (e.g. green eyes, tall)" value={c.visuals} onChange={e => { const n = [...charactersList]; n[i].visuals = e.target.value; setCharactersList(n); }} className="w-full p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
+                    <input type="text" placeholder={lang === 'ar' ? 'تفاصيل مرئية (مثل عيون خضراء، طويل)' : 'Visual details (e.g. green eyes, tall)'} value={c.visuals} onChange={e => { const n = [...charactersList]; n[i].visuals = e.target.value; setCharactersList(n); }} className="w-full p-2 border rounded-lg text-sm bg-white dark:bg-slate-900"/>
                   </div>
                 ))}
               </div>
@@ -543,7 +543,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'التركيز النحوي' : 'Grammar Focus'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'مثال: أفعال الماضي، الصفات' : 'Example: Past tense, Adjectives'}</div></div>
               </label>
-              <input type="text" value={grammarFocus} onChange={e => setGrammarFocus(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. Past tense verbs"/>
+              <input type="text" value={grammarFocus} onChange={e => setGrammarFocus(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'مثال: أفعال الماضي' : 'e.g. Past tense verbs'}/>
             </div>
 
             <div className="space-y-2 relative md:col-span-2">
@@ -551,7 +551,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'قائمة المفردات' : 'Vocab List'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'اكتب كلمات مفصولة بفاصلة لدمجها في القصة' : 'Comma-separated words to include in the story'}</div></div>
               </label>
-              <input type="text" value={vocabList} onChange={e => setVocabList(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. sword, ancient, bravery"/>
+              <input type="text" value={vocabList} onChange={e => setVocabList(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'مثال: سيف، قديم، شجاعة' : 'e.g. sword, ancient, bravery'}/>
             </div>
 
             <div className="space-y-2 relative md:col-span-2">
@@ -559,7 +559,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'جمل ثابتة' : 'Fixed Lines'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'جمل يجب أن تذكر كما هي' : 'Sentences that must appear exactly as written'}</div></div>
               </label>
-              <textarea rows="2" value={fixedLines} onChange={e => setFixedLines(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="e.g. 'I am the master of the sword!'"></textarea>
+              <textarea rows="2" value={fixedLines} onChange={e => setFixedLines(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'مثال: "أنا سيد السيف!"' : 'e.g. \'I am the master of the sword!\''}></textarea>
             </div>
           </div>
           
