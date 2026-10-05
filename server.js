@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import { generateAndSaveSlideImage, generateProfileCoverImage, generateCharacterAvatar } from './aiImageService.js';
 import { generateStoryPlanWithGemini, generateStoryTextWithGemini } from './aiTextService.js';
 import { generateAndSaveSlideVoice } from './aiVoiceService.js';
-import { sendOtpEmail, sendTeacherRequestToAdmin, sendPackagePurchaseEmail } from './emailService.js';
+import { sendOtpEmail, sendTeacherRequestToAdmin, sendPackagePurchaseEmail, sendFeedbackEmail } from './emailService.js';
 import { generateToken, authenticateUser, requireRole } from './authMiddleware.js';
 
 import multer from 'multer';
@@ -1747,4 +1747,19 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Qisas Backend Server listening on http://localhost:${PORT}`);
+});
+
+// POST /api/feedback
+app.post('/api/feedback', async (req, res) => {
+  const { name, email, type, message } = req.body;
+  if (!name || !email || !message) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+  try {
+    await sendFeedbackEmail({ name, email, type: type || 'suggestion', message });
+    res.json({ success: true, message: 'Feedback sent successfully' });
+  } catch (err) {
+    console.error('Feedback email error:', err);
+    res.status(500).json({ success: false, message: 'Failed to send feedback' });
+  }
 });

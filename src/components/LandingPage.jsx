@@ -170,6 +170,13 @@ export default function LandingPage({ setCurrentView, setSelectedStoryId }) {
             <PhoneCall className="w-4 h-4" />
             {t('footerContact')}
           </button>
+          <button
+            onClick={() => setCurrentView('updates')}
+            className="hover:text-amber-500 transition-colors flex items-center gap-1.5"
+          >
+            <Sparkles className="w-4 h-4" />
+            {lang === 'ar' ? 'التحديثات' : 'Updates'}
+          </button>
         </div>
 
         {/* Required Credit Line */}

@@ -166,9 +166,22 @@ export function FeedbackPage({ setCurrentView }) {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', type: 'suggestion', message: '' });
 
-  const handleSubmit = (e) => {
+  const [isSending, setIsSending] = useState(false);
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitted(true);
+    setIsSending(true);
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      setSubmitted(true);
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -321,7 +334,7 @@ export function ContactPage({ setCurrentView }) {
             </p>
           </div>
         ) : (
-          <form onSubmit={(e) => { e.preventDefault(); setSubmitted(true); }} className="space-y-4">
+          <form onSubmit={(e) => { }} className="space-y-4">
             <div>
               <label className="block text-sm font-bold mb-1">
                 {lang === 'ar' ? 'الجهة / اسم التواصل' : 'Organization / Contact Name'}
@@ -374,6 +387,65 @@ export function ContactPage({ setCurrentView }) {
             </button>
           </form>
         )}
+      </div>
+    </div>
+  );
+}
+export function UpdatesPage({ setCurrentView }) {
+  const { lang, t } = useLanguage();
+  return (
+    <div className={`max-w-4xl mx-auto px-4 py-8 ${lang === 'ar' ? 'font-arabic' : ''}`}>
+      <button
+        onClick={() => setCurrentView('landing')}
+        className="inline-flex items-center gap-2 text-sm font-bold text-amber-600 dark:text-amber-400 mb-6 hover:underline"
+      >
+        {lang === 'ar' ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+        {t('backToHomeBtn')}
+      </button>
+
+      <div className="glass-panel p-8 rounded-3xl space-y-8">
+        <div className="flex items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-lg">
+            <Sparkles className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-3xl font-black text-slate-900 dark:text-white">
+              {lang === 'ar' ? '????????? ??????????' : 'Platform Updates & Releases'}
+            </h2>
+            <p className="text-sm text-slate-500">
+              {lang === 'ar' ? '???? ??? ???? ??????? ??????? ????? ???? ?????' : 'Discover the latest features added to the StoryMaker platform'}
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl">v1.1.0</div>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+              {lang === 'ar' ? '????? ????? ??????? ????????? ????????? ????????' : 'AI Story Wizard & Advanced Audio Update'}
+            </h3>
+            <p className="text-sm text-slate-500 mb-4">October 2026</p>
+            <ul className="list-disc list-inside space-y-2 text-slate-700 dark:text-slate-300">
+              <li>{lang === 'ar' ? '????? ????? ???? ????? (Make a Story) ?????? ??? ?? ????? ??????? ?????.' : 'Added the "Make a Story" Wizard to build stories from scratch with deep details.'}</li>
+              <li>{lang === 'ar' ? '????? ????? ?????? ????????? ??? ????? Google Cloud Chirp3-HD ????? ?????.' : 'Upgraded AI Voices to ultra-realistic Google Cloud Chirp3-HD models.'}</li>
+              <li>{lang === 'ar' ? '????? ????? ?????? (Word-level Timestamps) ???????? ????? SSML.' : 'Perfect Word-level Timestamp synchronization using SSML tags.'}</li>
+              <li>{lang === 'ar' ? '??? ????? ???? ?????? ????? (????? ????? ?????? ???).' : 'Support for multiple image art styles (Anime, Watercolor, etc).'}</li>
+              <li>{lang === 'ar' ? '????? ???? ????? ?????????? ????? ????????.' : 'Comprehensive overhaul of the Statistics page and Help Center.'}</li>
+            </ul>
+          </div>
+          
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
+              {lang === 'ar' ? '??????? 1.0.0 (??????? ??????)' : 'Version 1.0.0 (Initial Release)'}
+            </h3>
+            <p className="text-sm text-slate-500 mb-4">September 2026</p>
+            <ul className="list-disc list-inside space-y-2 text-slate-700 dark:text-slate-300">
+              <li>{lang === 'ar' ? '????? ???? ??? ???????? ?????? ?????? ??? ????? ??????.' : 'Launched the core Qisas platform for text-to-slide conversion.'}</li>
+              <li>{lang === 'ar' ? '??? ????? ????? ???????? ????? Gemini.' : 'Support for image generation using Gemini models.'}</li>
+              <li>{lang === 'ar' ? '???? ????????? ???????? ????? ???? ????????.' : 'Membership system, packages, and admin dashboard.'}</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   );

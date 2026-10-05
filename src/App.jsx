@@ -14,7 +14,7 @@ import AdminDashboardPage from './components/AdminDashboardPage';
 import AdminSettingsPage from './components/AdminSettingsPage';
 import StoriesModeratorPage from './components/StoriesModeratorPage';
 import AuthModal from './components/AuthModal';
-import { AboutPage, RulesPage, FeedbackPage, ContactPage } from './components/Pages';
+import { AboutPage, RulesPage, FeedbackPage, ContactPage, UpdatesPage } from './components/Pages';
 import HelpPage from './components/HelpPage';
 import { Wrench, ShieldCheck, Lock } from 'lucide-react';
 
@@ -154,6 +154,8 @@ function MainRouter() {
         {currentView === 'about' && <AboutPage setCurrentView={handleNavigate} />}
         {currentView === 'rules' && <RulesPage setCurrentView={handleNavigate} />}
         {currentView === 'contact' && <ContactPage setCurrentView={handleNavigate} />}
+        {currentView === 'feedback' && <FeedbackPage setCurrentView={handleNavigate} />}
+        {currentView === 'updates' && <UpdatesPage setCurrentView={handleNavigate} />}
         {currentView === 'help' && <HelpPage />}
 
         {currentView === 'publicProfile' && (

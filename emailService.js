@@ -178,3 +178,20 @@ export async function sendPackagePurchaseEmail({ toEmail, packageName, storiesAd
     console.warn(`[Email Service] Receipt email notice:`, err.message);
   }
 }
+export async function sendFeedbackEmail({ name, email, type, message }) {
+  const mailOptions = {
+    from: \"\ via Qisas" <\>\,
+    to: 'feedback@msoms.ai',
+    replyTo: email,
+    subject: \[\] Qisas Platform Feedback from \\,
+    html: \
+      <h3>New Feedback Received</h3>
+      <p><strong>Name:</strong> \</p>
+      <p><strong>Email:</strong> \</p>
+      <p><strong>Type:</strong> \</p>
+      <hr />
+      <p>\</p>
+    \
+  };
+  await transporter.sendMail(mailOptions);
+}
