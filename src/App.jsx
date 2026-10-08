@@ -38,6 +38,19 @@ function MainRouter() {
     }
     
     if (view === 'wizard') {
+      const savedStep = parseInt(sessionStorage.getItem('wizard_step'));
+      if (savedStep > 0) {
+        const msg = lang === 'ar' 
+          ? 'لديك قصة قيد الإنشاء لم تكتمل.\n\nاضغط (موافق / OK) لإكمالها، أو (إلغاء / Cancel) للبدء من جديد واختيار نوع القصة.' 
+          : 'You have an unfinished story.\n\nPress OK to resume, or Cancel to start over and choose the story type.';
+        if (!window.confirm(msg)) {
+          sessionStorage.removeItem('wizard_step');
+          sessionStorage.removeItem('wizard_mode');
+          sessionStorage.removeItem('wizard_planData');
+          sessionStorage.removeItem('wizard_draftStory');
+        }
+      }
+
       if (!user) {
         openAuthModal('login');
         return;
