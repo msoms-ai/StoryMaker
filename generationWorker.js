@@ -61,27 +61,27 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
     
     // B. Generate Image
     updateProgress({ slideIndex: i, totalSlides, stage: 'Generating Image...' });
-    const imgFilename = await generateAndSaveSlideImage(
+    const imgFilename = await generateAndSaveSlideImage({
       folderName, 
-      i, 
+      slideIndex: i, 
       slideText, 
-      title, 
-      settings.category, 
-      planData.characters || [], 
+      storyTitle: title, 
+      category: settings.category, 
+      characters: planData.characters || [], 
       lang, 
-      '', // feedback
+      userFeedback: '', 
       artStyle
-    );
+    });
 
     // C. Generate Voice
     updateProgress({ slideIndex: i, totalSlides, stage: 'Generating Voice...' });
-    const voiceFilename = await generateAndSaveSlideVoice(
-      folderName, 
-      i, 
+    const voiceFilename = await generateAndSaveSlideVoice({
+      outputDir: voiceDir, 
+      slideIndex: i, 
       slideText, 
       lang,
-      narratorVoice || 'male'
-    );
+      voiceGender: narratorVoice || 'male'
+    });
 
     draftStory.slides.push({
       id: `slide_${i + 1}`,
