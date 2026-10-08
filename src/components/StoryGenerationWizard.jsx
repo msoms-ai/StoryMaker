@@ -428,7 +428,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 {lang === 'ar' ? 'عنوان القصة' : 'Story Title'}
                 <div className="group relative cursor-pointer"><Info className="w-4 h-4 text-amber-500"/><div className="hidden group-hover:block absolute bottom-full mb-2 w-64 p-2 bg-black text-white text-xs rounded z-10">{lang === 'ar' ? 'مثال: مغامرة الفارس الشجاع' : 'Example: The Brave Knight Adventure'}</div></div>
               </label>
-              <input type="text" value={storyName} onChange={e => setStoryName(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder="Enter title..."/>
+              <input type="text" value={storyName} onChange={e => setStoryName(e.target.value)} className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border" placeholder={lang === 'ar' ? 'أدخل العنوان...' : 'Enter title...'}/>
             </div>
             
             <div className="space-y-2 relative">
