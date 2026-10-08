@@ -168,104 +168,67 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     setTotalGenSlides(slidesCount);
 
     try {
-      // 1. Stage 1: Create Folders & Story ID
-      setGenStage('text');
+      // 1. Send all data to start-generation to queue the job
       const startRes = await fetch('/api/stories/start-generation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: planData ? planData.storyTitle : storyName })
-      });
-      const startData = await startRes.json();
-      const { storyId, folderName } = startData;
-
-      // 2. Stage 2: Real Gemini Image Generation per slide
-      setGenStage('image');
-      const generatedImageFiles = [];
-
-      for (let i = 0; i < slidesCount; i++) {
-        setGenProgressIndex(i);
-        
-        const imgRes = await fetch('/api/stories/generate-slide-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            folderName,
-            slideIndex: i,
-            slideText: slides[i].text,
-            storyTitle: planData ? planData.storyTitle : storyName,
-            category: selectedCategory,
-            lang,
-            userFeedback: redoComments,
-            characters: planData ? planData.characters : [],
-            artStyle
-          })
-        });
-        const imgData = await imgRes.json();
-        generatedImageFiles.push(imgData.imageFile);
-
-        setGenProgressIndex(i + 1);
-      }
-
-      // 3. Stage 3: Real Gemini Voice Narration per slide
-      setGenStage('voice');
-      setGenProgressIndex(0);
-      const generatedVoiceFiles = [];
-
-      for (let i = 0; i < slidesCount; i++) {
-        setGenProgressIndex(i);
-
-        const voiceRes = await fetch('/api/stories/generate-slide-voice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            folderName,
-            slideIndex: i,
-            slideText: slides[i].text,
-            lang,
-            voiceGender: narratorVoice
-          })
-        });
-        const voiceData = await voiceRes.json();
-        generatedVoiceFiles.push(voiceData.voiceFile);
-
-        setGenProgressIndex(i + 1);
-      }
-
-      // 4. Finalize Story Record
-      const finalSlides = slides.map((s, idx) => ({
-        index: idx,
-        title: s.title || `Scene ${idx + 1}`,
-        text: s.text,
-        imageFile: generatedImageFiles[idx],
-        voiceFile: generatedVoiceFiles[idx]
-      }));
-
-      const finalizeRes = await fetch('/api/stories/finalize-generation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storyId,
-          folderName,
+        body: JSON.stringify({ 
           title: planData ? planData.storyTitle : storyName,
-          category: selectedCategory,
-          lang,
-          slides: finalSlides,
-          comments: redoComments,
-          userId: user?.id,
-          isAiGenerated: sessionStorage.getItem('wizard_wasAiMade') === 'true'
+          planData: planData,
+          settings: {
+            category: selectedCategory,
+            isAiGenerated: wizardMode === 'make',
+            narratorVoice: narratorVoice,
+            artStyle: artStyle,
+            lang: lang,
+            userId: user?.id,
+            authorName: user?.username
+          }
         })
       });
-
-      const finalizeData = await finalizeRes.json();
-      if (finalizeData.success) {
-        setDraftStory(finalizeData.story);
-        if (refreshUser) refreshUser();
-        setIsGenerating(false);
-        setStep(6);
+      const startData = await startRes.json();
+      
+      if (!startData.success) {
+        throw new Error(startData.message || 'Failed to start generation');
       }
+      
+      const { storyId, folderName } = startData;
+
+      // 2. Poll for status
+      setGenStage('queue');
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/stories/status/${folderName}`);
+          const statusData = await statusRes.json();
+          
+          if (statusData.success) {
+             if (statusData.status === 'processing') {
+                setGenStage(statusData.stage || 'Generating...');
+                if (statusData.slideIndex !== undefined) {
+                  setGenProgressIndex(statusData.slideIndex);
+                }
+             } else if (statusData.status === 'completed') {
+                clearInterval(pollInterval);
+                setGenStage('finalize');
+                setStep(6);
+                setIsGenerating(false);
+                setSelectedStoryId(folderName);
+             } else if (statusData.status === 'failed') {
+                clearInterval(pollInterval);
+                alert('Generation failed: ' + statusData.error);
+                setIsGenerating(false);
+                setStep(0);
+             }
+          }
+        } catch (err) {
+          console.error("Polling error", err);
+        }
+      }, 2000);
+
     } catch (err) {
-      console.error('[Client Wizard Generation Error]:', err);
+      console.error(err);
       setIsGenerating(false);
+      alert('Error: ' + err.message);
     }
   };
 
