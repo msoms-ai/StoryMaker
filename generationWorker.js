@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { generateAndSaveSlideImage } from './aiImageService.js';
 import { generateAndSaveSlideVoice } from './aiVoiceService.js';
-import { generateStorySlideTextWithGemini } from './aiTextService.js';
 
 // We need a helper to read/write DB
 const DB_FILE = path.join(process.cwd(), 'STORIES', 'database.json');
