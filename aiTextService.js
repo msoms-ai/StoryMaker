@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import retry from 'async-retry';
 
 dotenv.config();
 
@@ -81,20 +82,55 @@ ${storyContent}
 
       try {
         console.log(`[AI Text Service] Requesting event-based verbatim story analysis and character visual profiles from ${model}...`);
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0.1
+        const data = await retry(
+          async (bail, attempt) => {
+            let res;
+            try {
+              res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: prompt }] }],
+                  generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.1
+                  }
+                })
+              });
+            } catch (netErr) {
+              // Network timeout or connection error should trigger retry
+              throw netErr;
             }
-          })
-        });
 
-        if (res.ok) {
-          const data = await res.json();
+            if (res.ok) {
+              return await res.json();
+            }
+
+            const errJson = await res.json().catch(() => ({}));
+            const msg = errJson.error?.message || `HTTP ${res.status}`;
+            const err = new Error(`Gemini model ${model} (${res.status}): ${msg}`);
+            err.status = res.status;
+
+            // Retry on 429, 503, 500, 504
+            if (res.status === 429 || res.status === 503 || res.status === 500 || res.status === 504) {
+              throw err;
+            }
+
+            // Non-retryable errors (e.g. 400 Bad Request, 404 Not Found)
+            bail(err);
+            return null;
+          },
+          {
+            retries: 3,
+            minTimeout: 2000,
+            factor: 2,
+            onRetry: (err, attempt) => {
+              console.warn(`[AI Text Service] Retrying story plan generation with ${model} (attempt ${attempt})...`);
+            }
+          }
+        );
+
+        if (data) {
           const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (rawJsonText) {
             const parsed = JSON.parse(rawJsonText);
@@ -272,23 +308,55 @@ Output JSON format ONLY:
 }`;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
   
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.7
+  const data = await retry(
+    async (bail, attempt) => {
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.7
+            }
+          })
+        });
+      } catch (netErr) {
+        throw netErr;
       }
-    })
-  });
 
-  if (!res.ok) {
+      if (res.ok) {
+        return await res.json();
+      }
+
+      const errJson = await res.json().catch(() => ({}));
+      const msg = errJson.error?.message || `HTTP ${res.status}`;
+      const err = new Error(`Gemini story text generation (${res.status}): ${msg}`);
+      err.status = res.status;
+
+      if (res.status === 429 || res.status === 503 || res.status === 500 || res.status === 504) {
+        throw err;
+      }
+
+      bail(err);
+      return null;
+    },
+    {
+      retries: 3,
+      minTimeout: 2000,
+      factor: 2,
+      onRetry: (err, attempt) => {
+        console.warn(`[AI Text Service] Retrying story text generation (attempt ${attempt})...`);
+      }
+    }
+  );
+
+  if (!data) {
     throw new Error('Failed to generate story text from Gemini');
   }
 
-  const data = await res.json();
   const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (rawJsonText) {
     const parsed = JSON.parse(rawJsonText);

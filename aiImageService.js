@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import retry from 'async-retry';
 
 dotenv.config();
 
@@ -132,28 +133,61 @@ async function generateViaGoogleGemini(prompt, apiKey) {
 
     try {
       console.log(`[AI Image Service] Calling Google Gemini API (${model}) for image creation...`);
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }]
-        })
-      });
+      const buffer = await retry(
+        async (bail, attempt) => {
+          let res;
+          try {
+            res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [{ text: prompt }]
+                }]
+              })
+            });
+          } catch (netErr) {
+            // Network timeouts or connection errors should trigger retry
+            throw netErr;
+          }
 
-      if (res.ok) {
-        const data = await res.json();
-        const parts = data.candidates?.[0]?.content?.parts || [];
-        for (const p of parts) {
-          if (p.inlineData?.data) {
-            return Buffer.from(p.inlineData.data, 'base64');
+          if (res.ok) {
+            const data = await res.json();
+            const parts = data.candidates?.[0]?.content?.parts || [];
+            for (const p of parts) {
+              if (p.inlineData?.data) {
+                return Buffer.from(p.inlineData.data, 'base64');
+              }
+            }
+            throw new Error(`Gemini model ${model}: No inline image data in response`);
+          }
+
+          const errJson = await res.json().catch(() => ({}));
+          const msg = errJson.error?.message || `HTTP ${res.status}`;
+          const err = new Error(`Gemini model ${model} (${res.status}): ${msg}`);
+          err.status = res.status;
+
+          // Catch HTTP 429, 503, and transient server errors to retry
+          if (res.status === 429 || res.status === 503 || res.status === 500 || res.status === 504) {
+            throw err;
+          }
+
+          // Non-retryable errors (e.g. 400 Bad Request, 404 Model Not Found)
+          bail(err);
+          return null;
+        },
+        {
+          retries: 3,
+          minTimeout: 2000,
+          factor: 2,
+          onRetry: (err, attempt) => {
+            console.log(`[AI Image Service] Retrying Gemini image generation (attempt ${attempt})...`);
           }
         }
-      } else {
-        const errJson = await res.json().catch(() => ({}));
-        const msg = errJson.error?.message || `HTTP ${res.status}`;
-        lastError = new Error(`Gemini model ${model} (${res.status}): ${msg}`);
+      );
+
+      if (buffer) {
+        return buffer;
       }
     } catch (e) {
       lastError = e;

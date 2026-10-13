@@ -10,7 +10,7 @@ import { generateStoryPlanWithGemini, generateStoryTextWithGemini } from './aiTe
 import { generateAndSaveSlideVoice } from './aiVoiceService.js';
 import { sendOtpEmail, sendTeacherRequestToAdmin, sendPackagePurchaseEmail, sendFeedbackEmail } from './emailService.js';
 import { generateToken, authenticateUser, requireRole } from './authMiddleware.js';
-import { startWorker, addStoryJob, jobStatusStore } from './queueService.js';
+import { startWorker, addStoryJob, jobStatusStore, getStoryJobStatus } from './queueService.js';
 import { processStoryGeneration } from './generationWorker.js';
 
 import multer from 'multer';
@@ -1429,11 +1429,18 @@ app.post('/api/stories/start-generation', async (req, res) => {
 });
 
 // GET /api/stories/status/:storyId
-app.get('/api/stories/status/:storyId', (req, res) => {
+app.get('/api/stories/status/:storyId', async (req, res) => {
   const { storyId } = req.params;
-  const statusData = jobStatusStore.get(storyId);
-  if (!statusData) return res.status(404).json({ success: false, message: 'Job not found' });
-  res.json({ success: true, ...statusData });
+  try {
+    const statusData = await getStoryJobStatus(storyId);
+    if (!statusData || !statusData.success) {
+      return res.status(404).json(statusData || { success: false, message: 'Job not found' });
+    }
+    res.json(statusData);
+  } catch (err) {
+    console.error(`[API] Error fetching status for ${storyId}:`, err);
+    res.status(500).json({ success: false, message: 'Failed to fetch story status' });
+  }
 });
 
 // 2. POST /api/stories/generate-slide-image
