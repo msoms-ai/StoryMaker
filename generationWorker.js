@@ -26,24 +26,36 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
   
   // 1. Create Directories
   const imgDir = path.join(STORIES_DIR, folderName, 'story_images');
-  const voiceDir = path.join(STORIES_DIR, folderName, 'story_voices');
+  const voiceDir = path.join(STORIES_DIR, folderName, 'story_voice');
   if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
   if (!fs.existsSync(voiceDir)) fs.mkdirSync(voiceDir, { recursive: true });
 
-  const totalSlides = planData.slides.length;
+  const totalSlides = planData.slides ? planData.slides.length : 0;
+  const isArabic = lang === 'ar' || /[\u0600-\u06FF]/.test(title);
+
   const draftStory = {
-    id: storyId,
-    title: title,
-    userId: userId,
-    authorName: authorName,
+    id: (Date.now() % 100000).toString().padStart(4, '0'),
+    folderName,
+    name: {
+      ar: title,
+      en: title
+    },
+    title,
+    category: settings.category || 'general',
+    lang: isArabic ? 'ar' : 'en',
+    readTimeMinutes: Math.ceil(totalSlides * 0.8),
+    slidesCount: totalSlides,
+    isAiGenerated: isAiGenerated === true,
+    status: 'draft',
+    authorId: userId || null,
+    authorName: authorName || (isArabic ? 'مؤلف مجهول' : 'Anonymous Author'),
+    readProgress: { currentSlide: 0, completed: false },
     createdAt: new Date().toISOString(),
-    isPublic: false,
+    comments: '',
     viewCount: 0,
     likes: 0,
     likedBy: [],
     completedBy: [],
-    isAiGenerated: isAiGenerated,
-    category: settings.category || 'general',
     coverImage: '',
     slides: []
   };
@@ -53,10 +65,6 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
     updateProgress({ slideIndex: i, totalSlides, stage: 'Generating...' });
     
     let currentSlide = planData.slides[i];
-    
-    // A. Generate Text (If AI Generated and needs slide expansion)
-    // Note: The UI passes pre-generated/analyzed text in planData. 
-    // We only call generateStorySlideTextWithGemini if it's missing or requested.
     let slideText = currentSlide.text;
     
     // B. Generate Image
@@ -68,6 +76,7 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
       storyTitle: title, 
       category: settings.category, 
       characters: planData.characters || [], 
+      outputDir: imgDir,
       lang, 
       userFeedback: '', 
       artStyle
@@ -83,28 +92,27 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
       voiceGender: narratorVoice || 'male'
     });
 
+    const encodedFolder = encodeURIComponent(folderName);
     draftStory.slides.push({
-      id: `slide_${i + 1}`,
+      index: i,
+      title: currentSlide.title || (isArabic ? `الشريحة ${i + 1}` : `Slide ${i + 1}`),
       text: slideText,
-      image: imgFilename,
-      audio: voiceFilename,
+      imageFile: `/STORIES/${encodedFolder}/story_images/${imgFilename}`,
+      voiceFile: `/STORIES/${encodedFolder}/story_voice/${voiceFilename}`,
       timestamp: 0 
     });
-
-    // Save intermediate progress to DB in case of crash? Not strictly necessary, but good.
-    // Actually, we can wait until the end to write to DB.
   }
 
   updateProgress({ slideIndex: totalSlides, totalSlides, stage: 'Finalizing...' });
 
   // 3. Set Cover Image
   if (draftStory.slides.length > 0) {
-    draftStory.coverImage = draftStory.slides[0].image;
+    draftStory.coverImage = draftStory.slides[0].imageFile;
   }
 
   // 4. Save to Database
   const db = readDB();
-  db.stories.push(draftStory);
+  db.stories.unshift(draftStory);
   writeDB(db);
 
   return draftStory;

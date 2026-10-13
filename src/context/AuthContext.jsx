@@ -77,7 +77,7 @@ export function AuthProvider({ children }) {
         body: JSON.stringify({ email, password })
       });
       if (!res.ok && res.headers.get('content-type')?.includes('text/html')) {
-        return { success: false, message: 'Server Configuration Error: The API is returning HTML instead of JSON. Ensure Node.js is running and routing /api requests on Plesk.' };
+        return { success: false, message: 'تعذر الاتصال بالخدمة حالياً. يرجى المحاولة مرة أخرى لاحقاً. (Service temporarily unavailable. Please try again shortly.)' };
       }
       const data = await res.json();
       if (data.success && data.token) {
@@ -96,7 +96,7 @@ export function AuthProvider({ children }) {
       return { success: false, message: data.message || 'Login failed' };
     } catch (err) {
       console.error(err);
-      return { success: false, message: 'Network error or server unreachable. Please check your Plesk configuration.' };
+      return { success: false, message: 'تعذر الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مجدداً. (Unable to connect to server. Please check your internet connection.)' };
     }
   };
 

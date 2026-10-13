@@ -44,12 +44,12 @@ export function startWorker(generateLogicCallback) {
       jobStatusStore.set(storyId, { status: 'processing', progress: 0 });
       
       // We inject the generation logic so we don't cause circular dependencies
-      await generateLogicCallback(job, storyId, planData, settings, (progressData) => {
+      const createdStory = await generateLogicCallback(job, storyId, planData, settings, (progressData) => {
         job.updateProgress(progressData);
         jobStatusStore.set(storyId, { status: 'processing', ...progressData });
       });
       
-      jobStatusStore.set(storyId, { status: 'completed', progress: 100 });
+      jobStatusStore.set(storyId, { status: 'completed', progress: 100, story: createdStory });
       console.log(`[Worker] Completed story: ${storyId}`);
     } catch (err) {
       console.error(`[Worker] Failed story: ${storyId}`, err);

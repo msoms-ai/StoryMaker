@@ -210,6 +210,9 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
              } else if (statusData.status === 'completed') {
                 clearInterval(pollInterval);
                 setGenStage('finalize');
+                if (statusData.story) {
+                  setDraftStory(statusData.story);
+                }
                 setStep(6);
                 setIsGenerating(false);
                 setSelectedStoryId(folderName);
