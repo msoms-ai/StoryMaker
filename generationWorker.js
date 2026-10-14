@@ -62,13 +62,13 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
 
   // 2. Loop through slides
   for (let i = 0; i < totalSlides; i++) {
-    updateProgress({ slideIndex: i, totalSlides, stage: 'Generating...' });
+    const slideProgress = Math.round((i / totalSlides) * 90);
+    updateProgress({ slideIndex: i, totalSlides, stage: 'image', progress: slideProgress });
     
     let currentSlide = planData.slides[i];
     let slideText = currentSlide.text;
     
     // B. Generate Image
-    updateProgress({ slideIndex: i, totalSlides, stage: 'Generating Image...' });
     const imgFilename = await generateAndSaveSlideImage({
       folderName, 
       slideIndex: i, 
@@ -83,7 +83,8 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
     });
 
     // C. Generate Voice
-    updateProgress({ slideIndex: i, totalSlides, stage: 'Generating Voice...' });
+    const voiceProgress = Math.round(((i + 0.8) / totalSlides) * 90);
+    updateProgress({ slideIndex: i, totalSlides, stage: 'voice', progress: voiceProgress });
     const voiceFilename = await generateAndSaveSlideVoice({
       outputDir: voiceDir, 
       slideIndex: i, 
@@ -103,7 +104,7 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
     });
   }
 
-  updateProgress({ slideIndex: totalSlides, totalSlides, stage: 'Finalizing...' });
+  updateProgress({ slideIndex: totalSlides, totalSlides, stage: 'voice', progress: 95 });
 
   // 3. Set Cover Image
   if (draftStory.slides.length > 0) {

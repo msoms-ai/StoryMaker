@@ -4,16 +4,31 @@ import fs from 'fs';
 import path from 'path';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+
+let isRedisConnected = false;
+
 const connection = new IORedis(REDIS_URL, {
   maxRetriesPerRequest: null,
+  lazyConnect: false,
+  enableOfflineQueue: true,
+  connectTimeout: 5000,
   retryStrategy(times) {
-    console.warn(`[Redis] Retrying connection (attempt ${times})...`);
-    return Math.min(times * 50, 2000);
+    if (times > 5) {
+      // Don't flood logs if redis isn't running
+      return 5000;
+    }
+    return Math.min(times * 100, 2000);
   }
 });
 
+connection.on('ready', () => {
+  isRedisConnected = true;
+  console.log('[Redis] Connected and ready on', REDIS_URL);
+});
+
 connection.on('error', (err) => {
-  console.error('[Redis Error] Connection failed. Is Redis running?');
+  isRedisConnected = false;
+  console.warn('[Redis] Connection warning: Redis unavailable or reconnecting. Fallback worker active.');
 });
 
 export const storyQueue = new Queue('story-generation', { connection });
@@ -21,64 +36,149 @@ export const storyQueue = new Queue('story-generation', { connection });
 // Initialize queue progress tracking in memory (persisted via job progress)
 export const jobStatusStore = new Map();
 
-export async function addStoryJob(storyId, planData, settings) {
-  const job = await storyQueue.add('generate-story', {
-    storyId,
-    planData,
-    settings
-  }, {
-    jobId: storyId,
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 2000 },
-    removeOnComplete: { age: 24 * 3600, count: 500 }, // Keep in Redis so returnvalue and status are queryable
-    removeOnFail: { age: 7 * 24 * 3600 }
-  });
-  jobStatusStore.set(storyId, { status: 'queued', progress: 0 });
-  return job;
+let registeredWorkerCallback = null;
+
+// In-process fallback queue if Redis is not running or temporarily down
+const localJobQueue = [];
+let localWorkerRunning = 0;
+const MAX_LOCAL_CONCURRENCY = 2;
+
+async function processLocalQueue() {
+  if (localWorkerRunning >= MAX_LOCAL_CONCURRENCY || localJobQueue.length === 0) return;
+  if (!registeredWorkerCallback) return;
+
+  const nextJob = localJobQueue.shift();
+  if (!nextJob) return;
+
+  localWorkerRunning++;
+  const { storyId, folderName, planData, settings } = nextJob;
+  console.log(`[Local Fallback Worker] Processing story: ${storyId} (${folderName})`);
+
+  try {
+    const updateProgress = (progressData) => {
+      const payload = { status: 'processing', ...progressData };
+      jobStatusStore.set(storyId, payload);
+      jobStatusStore.set(folderName, payload);
+    };
+
+    updateProgress({ progress: 5, stage: 'text', slideIndex: 0 });
+
+    const fakeJob = {
+      data: { storyId, folderName, planData, settings },
+      updateProgress
+    };
+
+    const createdStory = await registeredWorkerCallback(fakeJob, folderName, planData, settings, updateProgress);
+    
+    const completedPayload = { status: 'completed', progress: 100, story: createdStory, stage: 'finalize' };
+    jobStatusStore.set(storyId, completedPayload);
+    jobStatusStore.set(folderName, completedPayload);
+    console.log(`[Local Fallback Worker] Completed story: ${storyId}`);
+  } catch (err) {
+    console.error(`[Local Fallback Worker] Failed story: ${storyId}:`, err);
+    const failedPayload = { status: 'failed', error: err.message };
+    jobStatusStore.set(storyId, failedPayload);
+    jobStatusStore.set(folderName, failedPayload);
+  } finally {
+    localWorkerRunning--;
+    setImmediate(processLocalQueue);
+  }
+}
+
+export async function addStoryJob(storyId, folderName, planData, settings) {
+  // Store initial queued state under both clean storyId and folderName
+  const initialStatus = { status: 'queued', progress: 0, stage: 'text', storyId, folderName };
+  jobStatusStore.set(storyId, initialStatus);
+  jobStatusStore.set(folderName, initialStatus);
+
+  // If Redis is connected, add to BullMQ queue
+  if (isRedisConnected) {
+    try {
+      // Use clean alphanumeric ID for Redis BullMQ jobId (e.g. storyId '69132')
+      const cleanJobId = String(storyId).replace(/[^a-zA-Z0-9_-]/g, '') || `job_${Date.now()}`;
+      const job = await storyQueue.add('generate-story', {
+        storyId,
+        folderName,
+        planData,
+        settings
+      }, {
+        jobId: cleanJobId,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: { age: 24 * 3600, count: 500 },
+        removeOnFail: { age: 7 * 24 * 3600 }
+      });
+      return job;
+    } catch (err) {
+      console.warn('[Queue] BullMQ add failed, falling back to local worker queue:', err?.message || err);
+    }
+  }
+
+  // Fallback: Queue directly in local in-memory worker
+  console.log(`[Queue] Adding ${storyId} to in-process background worker queue.`);
+  localJobQueue.push({ storyId, folderName, planData, settings });
+  setImmediate(processLocalQueue);
+  return { id: storyId };
 }
 
 export function startWorker(generateLogicCallback) {
+  registeredWorkerCallback = generateLogicCallback;
+
+  // Start BullMQ Worker
   const worker = new Worker('story-generation', async (job) => {
-    const { storyId, planData, settings } = job.data;
-    console.log(`[Worker] Started processing story: ${storyId}`);
+    const { storyId, folderName, planData, settings } = job.data;
+    const activeTarget = folderName || storyId;
+    console.log(`[Worker] Started processing story: ${storyId} (${activeTarget})`);
     
     try {
-      jobStatusStore.set(storyId, { status: 'processing', progress: 0, stage: 'Starting...' });
-      
-      // We inject the generation logic so we don't cause circular dependencies
-      const createdStory = await generateLogicCallback(job, storyId, planData, settings, (progressData) => {
+      const updateProgress = (progressData) => {
         job.updateProgress(progressData);
-        jobStatusStore.set(storyId, { status: 'processing', ...progressData });
-      });
+        const payload = { status: 'processing', ...progressData };
+        jobStatusStore.set(storyId, payload);
+        if (folderName) jobStatusStore.set(folderName, payload);
+      };
+
+      updateProgress({ progress: 5, stage: 'text', slideIndex: 0 });
       
-      jobStatusStore.set(storyId, { status: 'completed', progress: 100, story: createdStory });
+      const createdStory = await generateLogicCallback(job, activeTarget, planData, settings, updateProgress);
+      
+      const completedPayload = { status: 'completed', progress: 100, story: createdStory, stage: 'finalize' };
+      jobStatusStore.set(storyId, completedPayload);
+      if (folderName) jobStatusStore.set(folderName, completedPayload);
+      
       console.log(`[Worker] Completed story: ${storyId}`);
       return createdStory;
     } catch (err) {
       console.error(`[Worker] Failed story: ${storyId}`, err);
-      jobStatusStore.set(storyId, { status: 'failed', error: err.message });
+      const failedPayload = { status: 'failed', error: err.message };
+      jobStatusStore.set(storyId, failedPayload);
+      if (folderName) jobStatusStore.set(folderName, failedPayload);
       throw err;
     }
   }, { 
     connection,
-    concurrency: 2, // Max 2 stories generated simultaneously to save RAM
-    lockDuration: 300000, // 5 min lock duration for long-running story generations
-    stalledInterval: 30000, // Check for stalled jobs every 30s (e.g. after server restart)
+    concurrency: 2,
+    lockDuration: 300000,
+    stalledInterval: 30000,
     maxStalledCount: 3
   });
 
   worker.on('completed', (job, returnvalue) => {
     console.log(`[Worker] Job ${job?.id} completed successfully.`);
-    if (job?.data?.storyId) {
-      jobStatusStore.set(job.data.storyId, { status: 'completed', progress: 100, story: returnvalue });
-    }
+    const sId = job?.data?.storyId;
+    const fName = job?.data?.folderName;
+    const payload = { status: 'completed', progress: 100, story: returnvalue, stage: 'finalize' };
+    if (sId) jobStatusStore.set(sId, payload);
+    if (fName) jobStatusStore.set(fName, payload);
   });
 
   worker.on('failed', (job, err) => {
     console.error(`[Worker] Job ${job?.id} has failed: ${err.message}`);
-    if (job?.data?.storyId) {
-      jobStatusStore.set(job.data.storyId, { status: 'failed', error: err.message });
-    }
+    const sId = job?.data?.storyId;
+    const fName = job?.data?.folderName;
+    const payload = { status: 'failed', error: err.message };
+    if (sId) jobStatusStore.set(sId, payload);
+    if (fName) jobStatusStore.set(fName, payload);
   });
 
   worker.on('stalled', (jobId) => {
@@ -86,98 +186,125 @@ export function startWorker(generateLogicCallback) {
   });
 
   worker.on('error', (err) => {
-    console.error(`[Worker] Worker error:`, err);
+    console.warn(`[Worker] Worker redis connection notice:`, err?.message || err);
   });
 
-  // Re-sync pending or active jobs from Redis into jobStatusStore on restart
+  // Re-sync pending or active jobs from Redis on startup
   storyQueue.getJobs(['active', 'waiting', 'delayed']).then(jobs => {
     if (jobs && jobs.length > 0) {
       console.log(`[Queue Recovery] Recovered ${jobs.length} active/pending jobs from Redis.`);
       for (const j of jobs) {
         const sId = j.data?.storyId || j.id;
+        const fName = j.data?.folderName;
         if (sId && !jobStatusStore.has(sId)) {
           const progressVal = typeof j.progress === 'number' ? j.progress : (j.progress?.progress || 0);
-          jobStatusStore.set(sId, {
+          const stageVal = (j.progress && typeof j.progress === 'object' && j.progress.stage) ? j.progress.stage : 'text';
+          const payload = {
             status: 'processing',
             progress: progressVal,
-            stage: 'Processing in Queue (Recovered)...'
-          });
+            stage: stageVal
+          };
+          jobStatusStore.set(sId, payload);
+          if (fName) jobStatusStore.set(fName, payload);
         }
       }
     }
   }).catch(err => {
-    console.warn('[Queue Recovery] Could not query existing jobs on worker startup:', err?.message || err);
+    // Redis might be offline on startup
   });
 
   return worker;
 }
 
-export async function getStoryJobStatus(storyId) {
-  // 1. First check in-memory jobStatusStore
-  const inMemoryStatus = jobStatusStore.get(storyId);
-  if (inMemoryStatus) {
-    return { success: true, ...inMemoryStatus };
+export async function getStoryJobStatus(queryId) {
+  if (!queryId) return { success: false, message: 'Invalid query ID' };
+
+  // 1. Direct check in jobStatusStore
+  if (jobStatusStore.has(queryId)) {
+    return { success: true, ...jobStatusStore.get(queryId) };
   }
 
-  // 2. If not found or if the server restarted, query BullMQ from Redis
-  try {
-    let job = await storyQueue.getJob(storyId);
-    if (!job) {
-      // Check if job exists in Redis by searching matching ID
-      const jobs = await storyQueue.getJobs(['active', 'waiting', 'delayed', 'completed', 'failed']);
-      job = jobs.find(j => j.id === storyId || j.data?.storyId === storyId || (typeof j.id === 'string' && j.id.includes(storyId)));
+  // 2. Fuzzy match in jobStatusStore (handles ID vs FolderName vs [ID#123] differences)
+  for (const [key, val] of jobStatusStore.entries()) {
+    if (
+      key === queryId || 
+      key.includes(queryId) || 
+      queryId.includes(key) ||
+      (val.storyId && (val.storyId === queryId || queryId.includes(val.storyId))) ||
+      (val.folderName && (val.folderName === queryId || queryId.includes(val.folderName)))
+    ) {
+      return { success: true, ...val };
     }
-
-    if (job) {
-      const state = await job.getState();
-      if (state === 'completed') {
-        const result = { success: true, status: 'completed', progress: 100, story: job.returnvalue };
-        jobStatusStore.set(storyId, { status: 'completed', progress: 100, story: job.returnvalue });
-        return result;
-      }
-      if (state === 'failed') {
-        const result = { success: true, status: 'failed', error: job.failedReason };
-        jobStatusStore.set(storyId, { status: 'failed', error: job.failedReason });
-        return result;
-      }
-      if (state === 'active' || state === 'waiting' || state === 'delayed') {
-        const progressVal = typeof job.progress === 'number' ? job.progress : (job.progress?.progress || 0);
-        const stageVal = (job.progress && typeof job.progress === 'object' && job.progress.stage) ? job.progress.stage : 'Processing in Queue...';
-        const extra = (job.progress && typeof job.progress === 'object') ? job.progress : {};
-        const result = {
-          success: true,
-          status: 'processing',
-          ...extra,
-          progress: progressVal,
-          stage: stageVal
-        };
-        jobStatusStore.set(storyId, result);
-        return result;
-      }
-    }
-  } catch (err) {
-    console.error(`[Queue] Error querying job ${storyId} from Redis:`, err);
   }
 
-  // 3. If neither exists, check the database (database.json) to see if the story already finished and was saved!
+  // 3. Query Redis BullMQ if available
+  if (isRedisConnected) {
+    try {
+      const cleanJobId = String(queryId).replace(/[^a-zA-Z0-9_-]/g, '');
+      let job = await storyQueue.getJob(cleanJobId);
+      if (!job) {
+        const jobs = await storyQueue.getJobs(['active', 'waiting', 'delayed', 'completed', 'failed']);
+        job = jobs.find(j => 
+          j.id === queryId || 
+          j.id === cleanJobId ||
+          j.data?.storyId === queryId || 
+          j.data?.folderName === queryId ||
+          (typeof j.id === 'string' && j.id.includes(queryId))
+        );
+      }
+
+      if (job) {
+        const state = await job.getState();
+        if (state === 'completed') {
+          const result = { success: true, status: 'completed', progress: 100, story: job.returnvalue, stage: 'finalize' };
+          jobStatusStore.set(queryId, result);
+          return result;
+        }
+        if (state === 'failed') {
+          const result = { success: true, status: 'failed', error: job.failedReason };
+          jobStatusStore.set(queryId, result);
+          return result;
+        }
+        if (state === 'active' || state === 'waiting' || state === 'delayed') {
+          const progressVal = typeof job.progress === 'number' ? job.progress : (job.progress?.progress || 0);
+          const stageVal = (job.progress && typeof job.progress === 'object' && job.progress.stage) ? job.progress.stage : 'image';
+          const extra = (job.progress && typeof job.progress === 'object') ? job.progress : {};
+          const result = {
+            success: true,
+            status: 'processing',
+            ...extra,
+            progress: progressVal,
+            stage: stageVal
+          };
+          jobStatusStore.set(queryId, result);
+          return result;
+        }
+      }
+    } catch (err) {
+      console.warn(`[Queue] Error querying job ${queryId} from Redis:`, err?.message || err);
+    }
+  }
+
+  // 4. Fallback: Check STORIES/database.json to see if story completed and saved to disk
   try {
     const dbFile = path.join(process.cwd(), 'STORIES', 'database.json');
     if (fs.existsSync(dbFile)) {
       const raw = fs.readFileSync(dbFile, 'utf-8');
       const db = JSON.parse(raw);
       const dbStory = (db.stories || []).find(s => 
-        s.folderName === storyId || 
-        s.id === storyId || 
-        (s.folderName && s.folderName.includes(storyId)) ||
-        (typeof storyId === 'string' && storyId.includes(s.folderName))
+        s.id === queryId || 
+        s.folderName === queryId || 
+        (s.folderName && s.folderName.includes(queryId)) ||
+        (s.id && queryId.includes(s.id))
       );
       if (dbStory) {
-        jobStatusStore.set(storyId, { status: 'completed', progress: 100, story: dbStory });
-        return { success: true, status: 'completed', progress: 100, story: dbStory };
+        const result = { success: true, status: 'completed', progress: 100, story: dbStory, stage: 'finalize' };
+        jobStatusStore.set(queryId, result);
+        return result;
       }
     }
   } catch (err) {
-    console.error(`[Queue] Error reading database for story ${storyId}:`, err);
+    console.warn(`[Queue] Error reading database for story ${queryId}:`, err?.message || err);
   }
 
   return { success: false, message: 'Job not found' };

@@ -1420,7 +1420,7 @@ app.post('/api/stories/start-generation', async (req, res) => {
   }
 
   try {
-    await addStoryJob(folderName, planData, { ...settings, title });
+    await addStoryJob(currentStoryId, folderName, planData, { ...settings, title });
     res.json({ success: true, storyId: currentStoryId, folderName });
   } catch (err) {
     console.error('[API] Failed to queue story:', err);
@@ -1430,15 +1430,16 @@ app.post('/api/stories/start-generation', async (req, res) => {
 
 // GET /api/stories/status/:storyId
 app.get('/api/stories/status/:storyId', async (req, res) => {
-  const { storyId } = req.params;
+  const rawId = req.params.storyId;
+  const decodedId = decodeURIComponent(rawId);
   try {
-    const statusData = await getStoryJobStatus(storyId);
+    const statusData = await getStoryJobStatus(decodedId);
     if (!statusData || !statusData.success) {
       return res.status(404).json(statusData || { success: false, message: 'Job not found' });
     }
     res.json(statusData);
   } catch (err) {
-    console.error(`[API] Error fetching status for ${storyId}:`, err);
+    console.error(`[API] Error fetching status for ${rawId}:`, err);
     res.status(500).json({ success: false, message: 'Failed to fetch story status' });
   }
 });

@@ -194,18 +194,28 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
       
       const { storyId, folderName } = startData;
 
-      // 2. Poll for status
-      setGenStage('queue');
+      // 2. Poll for status using clean URL-encoded storyId
+      setGenStage('text');
+      const pollQueryId = encodeURIComponent(storyId || folderName);
+      
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await fetch(`/api/stories/status/${folderName}`);
+          const statusRes = await fetch(`/api/stories/status/${pollQueryId}`);
           const statusData = await statusRes.json();
           
           if (statusData.success) {
              if (statusData.status === 'processing') {
-                setGenStage(statusData.stage || 'Generating...');
+                if (statusData.stage) {
+                  const s = String(statusData.stage).toLowerCase();
+                  if (s.includes('voice')) setGenStage('voice');
+                  else if (s.includes('image')) setGenStage('image');
+                  else setGenStage('text');
+                }
                 if (statusData.slideIndex !== undefined) {
                   setGenProgressIndex(statusData.slideIndex);
+                }
+                if (statusData.totalSlides && statusData.totalSlides > 0) {
+                  setTotalGenSlides(statusData.totalSlides);
                 }
              } else if (statusData.status === 'completed') {
                 clearInterval(pollInterval);
@@ -215,10 +225,10 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 }
                 setStep(6);
                 setIsGenerating(false);
-                setSelectedStoryId(folderName);
+                setSelectedStoryId(folderName || storyId);
              } else if (statusData.status === 'failed') {
                 clearInterval(pollInterval);
-                alert('Generation failed: ' + statusData.error);
+                alert((lang === 'ar' ? 'فشل إنشاء القصة: ' : 'Generation failed: ') + (statusData.error || 'Unknown error'));
                 setIsGenerating(false);
                 setStep(0);
              }
@@ -1060,9 +1070,13 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
           <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
             <div className="absolute inset-0 rounded-full border-4 border-amber-500/20 border-t-amber-500 animate-spin"></div>
             <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-xl">
-              {genStage === 'text' && <FileText className="w-10 h-10 animate-pulse" />}
-              {genStage === 'image' && <Palette className="w-10 h-10 animate-bounce" />}
-              {genStage === 'voice' && <Mic className="w-10 h-10 animate-pulse" />}
+              {genStage === 'image' ? (
+                <Palette className="w-10 h-10 animate-bounce" />
+              ) : genStage === 'voice' ? (
+                <Mic className="w-10 h-10 animate-pulse" />
+              ) : (
+                <FileText className="w-10 h-10 animate-pulse" />
+              )}
             </div>
           </div>
 
@@ -1073,7 +1087,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                   {lang === 'ar' ? 'المرحلة الأولى: تهيئة مجلدات القصة وبنيتها...' : 'Stage 1: Initializing story folders & structure...'}
                 </h3>
                 <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
-                  {lang === 'ar' ? 'جاري إنشاء مجلدات الصور والأصوات المخصصة للقصة...' : 'Creating dedicated folders for illustrations and audio narrations...'}
+                  {lang === 'ar' ? 'جاري إنشاء مجلدات الصور والأصوات المخصصة للقصة وبدء المعالجة...' : 'Creating dedicated folders and initiating the AI generation pipeline...'}
                 </p>
               </>
             )}
@@ -1088,23 +1102,6 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                     ? `جاري رسم وتجسيد المشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides} بنمط (${artStyle}) (Google Gemini API)...`
                     : `Drawing scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides} with ${artStyle} style (Google Gemini API)...`}
                 </p>
-
-                <div className="max-w-md mx-auto space-y-2 pt-2">
-                  <div className="flex justify-between text-xs font-bold text-amber-700 dark:text-amber-300">
-                    <span>
-                      {lang === 'ar'
-                        ? `تم رسم ${genProgressIndex} من ${totalGenSlides} مشاهد`
-                        : `Drawn ${genProgressIndex} of ${totalGenSlides} scenes`}
-                    </span>
-                    <span>{progressPercent}%</span>
-                  </div>
-                  <div className="w-full bg-slate-200 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5">
-                    <div
-                      className="bg-gradient-to-r from-amber-500 to-emerald-500 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${Math.max(5, progressPercent)}%` }}
-                    ></div>
-                  </div>
-                </div>
               </>
             )}
 
@@ -1115,28 +1112,44 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 </h3>
                 <p className="text-sm font-bold text-rose-600 dark:text-rose-400">
                   {lang === 'ar'
-                    ? `جاري توليد الملف الصوتي النقي للمشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides} (Gemini Speech API)...`
-                    : `Generating crystal-clear narration for scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides} (Gemini Speech API)...`}
+                    ? `جاري توليد الملف الصوتي النقي للمشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides} (Google TTS API)...`
+                    : `Generating crystal-clear narration for scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides} (Google TTS API)...`}
                 </p>
-
-                <div className="max-w-md mx-auto space-y-2 pt-2">
-                  <div className="flex justify-between text-xs font-bold text-rose-700 dark:text-rose-300">
-                    <span>
-                      {lang === 'ar'
-                        ? `تم توليد ${genProgressIndex} من ${totalGenSlides} أصوات`
-                        : `Generated ${genProgressIndex} of ${totalGenSlides} voice tracks`}
-                    </span>
-                    <span>{progressPercent}%</span>
-                  </div>
-                  <div className="w-full bg-slate-200 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5">
-                    <div
-                      className="bg-gradient-to-r from-rose-500 to-indigo-600 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${Math.max(5, progressPercent)}%` }}
-                    ></div>
-                  </div>
-                </div>
               </>
             )}
+
+            {genStage !== 'text' && genStage !== 'image' && genStage !== 'voice' && (
+              <>
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+                  {lang === 'ar' ? 'جاري العمل في قائمة الانتظار... ⏳' : 'Processing story in queue... ⏳'}
+                </h3>
+                <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                  {lang === 'ar' ? 'جاري الاتصال بخوادم الذكاء الاصطناعي وبدء إنشاء المشاهد...' : 'Connecting to AI services and generating scenes...'}
+                </p>
+              </>
+            )}
+
+            {/* Universal Progress Bar */}
+            <div className="max-w-md mx-auto space-y-2 pt-2">
+              <div className="flex justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                <span>
+                  {lang === 'ar'
+                    ? (genStage === 'image' 
+                        ? `تم رسم ${genProgressIndex} من ${totalGenSlides} مشاهد` 
+                        : (genStage === 'voice' ? `تم تسجيل ${genProgressIndex} من ${totalGenSlides} أصوات` : `جاري المعالجة...`))
+                    : (genStage === 'image' 
+                        ? `Drawn ${genProgressIndex} of ${totalGenSlides} scenes` 
+                        : (genStage === 'voice' ? `Voiced ${genProgressIndex} of ${totalGenSlides} scenes` : `Processing in progress...`))}
+                </span>
+                <span>{progressPercent}%</span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5">
+                <div
+                  className="bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.max(5, progressPercent)}%` }}
+                ></div>
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-200 dark:border-slate-800 max-w-lg mx-auto">
