@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import confetti from 'canvas-confetti';
-import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import EnhancedAudioPlayer from './EnhancedAudioPlayer';
+import ShareStoryModal from './ShareStoryModal';
 
 export default function StoryReaderPage({ storyId, setCurrentView, setViewingUserId }) {
   const { lang, dir, t } = useLanguage();
@@ -15,6 +16,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   const [isShaking, setIsShaking] = useState(false);
   const [showToastNotice, setShowToastNotice] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   
   const lastSlideTimeRef = useRef(Date.now());
   const maxReachedSlideRef = useRef(0);
@@ -154,7 +156,15 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           )}
         </div>
 
-        <div className="w-24"></div>
+        {/* Top Right Share Button */}
+        <button
+          onClick={() => setIsShareModalOpen(true)}
+          className={`px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2 ${lang === 'ar' ? 'font-arabic' : ''}`}
+          title={lang === 'ar' ? 'مشاركة أو تحميل القصة كـ PDF' : 'Share or Download Story as PDF'}
+        >
+          <Share2 className="w-4 h-4" />
+          <span>{lang === 'ar' ? 'مشاركة' : 'Share'}</span>
+        </button>
       </div>
 
       {/* Main Middle Slide Container */}
@@ -233,6 +243,14 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
         </div>
 
       </div>
+
+      {/* Share Story & Landscape PDF Modal */}
+      <ShareStoryModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        story={story}
+        lang={lang}
+      />
 
     </div>
   );

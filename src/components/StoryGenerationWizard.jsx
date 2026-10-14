@@ -60,6 +60,49 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
   const [editingCharText, setEditingCharText] = useState('');
   const [narratorVoice, setNarratorVoice] = useState('male');
 
+  const [textGenProgress, setTextGenProgress] = useState(10);
+  const [planningProgress, setPlanningProgress] = useState(10);
+
+  const ART_STYLE_NAMES = {
+    'Colored Pencil': { ar: 'أقلام خشبية ملونة', en: 'Colored Pencil' },
+    'Watercolor Painting': { ar: 'ألوان مائية ساحرة', en: 'Watercolor Painting' },
+    '3D Pixar Animation': { ar: 'رسوم ثلاثية الأبعاد (3D)', en: '3D Animation' },
+    'Anime / Manga': { ar: 'أنمي ومانغا', en: 'Anime / Manga' },
+    'Oil Painting': { ar: 'لوحة زيتية كلاسيكية', en: 'Oil Painting' }
+  };
+
+  // Smoothly increment text generation progress while on Step 11
+  useEffect(() => {
+    if (step !== 11) {
+      setTextGenProgress(10);
+      return;
+    }
+    const interval = setInterval(() => {
+      setTextGenProgress((prev) => {
+        if (prev >= 92) return prev;
+        const jump = Math.floor(Math.random() * 8) + 4;
+        return Math.min(92, prev + jump);
+      });
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [step]);
+
+  // Smoothly increment planning progress while isPlanning on Step 4
+  useEffect(() => {
+    if (!isPlanning) {
+      setPlanningProgress(10);
+      return;
+    }
+    const interval = setInterval(() => {
+      setPlanningProgress((prev) => {
+        if (prev >= 90) return prev;
+        const jump = Math.floor(Math.random() * 9) + 4;
+        return Math.min(90, prev + jump);
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isPlanning]);
+
   // Persist state to sessionStorage on change
   useEffect(() => {
     if (step >= 8 && step < 10) {
@@ -177,7 +220,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
           planData: planData,
           settings: {
             category: selectedCategory,
-            isAiGenerated: wizardMode === 'make',
+            isAiGenerated: wizardMode === 'make' || sessionStorage.getItem('wizard_wasAiMade') === 'true',
             narratorVoice: narratorVoice,
             artStyle: artStyle,
             lang: lang,
@@ -355,31 +398,39 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
             <button
-              onClick={() => { setWizardMode('make'); setStep(10); }}
+              onClick={() => { 
+                sessionStorage.setItem('wizard_wasAiMade', 'true');
+                setWizardMode('make'); 
+                setStep(10); 
+              }}
               className="p-8 rounded-3xl border-4 border-transparent bg-gradient-to-br from-amber-400/20 to-amber-600/20 hover:from-amber-400 hover:to-amber-600 hover:text-white transition-all group flex flex-col items-center gap-4 shadow-lg hover:shadow-amber-500/50"
             >
               <div className="w-20 h-20 rounded-full bg-amber-500 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
                 <Wand2 className="w-10 h-10" />
               </div>
               <h4 className={`text-2xl font-black ${lang === 'ar' ? 'font-arabic' : ''}`}>
-                {lang === 'ar' ? 'تأليف قصة (Make a Story)' : 'Make a Story'}
+                {lang === 'ar' ? 'تأليف قصة جديدة بالذكاء الاصطناعي' : 'Make a Story'}
               </h4>
               <p className="text-sm opacity-80">
-                {lang === 'ar' ? 'دع الذكاء الاصطناعي يكتب لك القصة من الصفر بناءً على أفكارك.' : 'Let AI write a story from scratch based on your ideas.'}
+                {lang === 'ar' ? 'دع الذكاء الاصطناعي يكتب لك القصة من الصفر بناءً على أفكارك وشخصياتك.' : 'Let AI write a story from scratch based on your ideas.'}
               </p>
             </button>
             <button
-              onClick={() => { setWizardMode('convert'); setStep(1); }}
+              onClick={() => { 
+                sessionStorage.removeItem('wizard_wasAiMade');
+                setWizardMode('convert'); 
+                setStep(1); 
+              }}
               className="p-8 rounded-3xl border-4 border-transparent bg-gradient-to-br from-indigo-400/20 to-indigo-600/20 hover:from-indigo-400 hover:to-indigo-600 hover:text-white transition-all group flex flex-col items-center gap-4 shadow-lg hover:shadow-indigo-500/50"
             >
               <div className="w-20 h-20 rounded-full bg-indigo-500 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
                 <FileText className="w-10 h-10" />
               </div>
               <h4 className={`text-2xl font-black ${lang === 'ar' ? 'font-arabic' : ''}`}>
-                {lang === 'ar' ? 'تحويل نص إلى قصة (Convert a Story)' : 'Convert a Story'}
+                {lang === 'ar' ? 'تحويل نص جاهز إلى قصة مصورة ومسموعة' : 'Convert a Story'}
               </h4>
               <p className="text-sm opacity-80">
-                {lang === 'ar' ? 'تحويل نص جاهز أو ملف أو رابط إلى قصة مصورة ومسموعة.' : 'Convert existing text, files, or links into an illustrated & voiced story.'}
+                {lang === 'ar' ? 'تحويل نص جاهز أو ملف أو مقال إلى قصة مصورة ومسموعة مع استخراج المشاهد.' : 'Convert existing text, files, or links into an illustrated & voiced story.'}
               </p>
             </button>
           </div>
@@ -582,28 +633,71 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
 
       {/* MAKE A STORY - Step 11: Loading Text */}
       {step === 11 && (
-        <div className="glass-panel p-12 rounded-3xl text-center space-y-8 animate-fade-in">
-          <Wand2 className="w-16 h-16 text-amber-500 mx-auto animate-spin" />
-          <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-            {lang === 'ar' ? 'جاري كتابة القصة...' : 'Writing your story...'}
-          </h3>
-          <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
-             <div className="bg-amber-500 h-full animate-pulse w-full"></div>
+        <div className={`glass-panel p-10 sm:p-14 rounded-3xl text-center space-y-8 animate-fade-in ${lang === 'ar' ? 'font-arabic' : ''}`}>
+          <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-4 border-amber-500/20 border-t-amber-500 animate-spin"></div>
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-xl">
+              <Wand2 className="w-8 h-8 animate-pulse text-amber-200" />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+              {textGenProgress < 30
+                ? (lang === 'ar' ? 'تحليل الأفكار وتجهيز شخصيات القصة... 💡' : 'Analyzing ideas and preparing story characters... 💡')
+                : textGenProgress < 60
+                ? (lang === 'ar' ? 'نسج الحبكة وبناء أحداث القصة المشوقة... ✍️📖' : 'Crafting narrative plot and events... ✍️📖')
+                : textGenProgress < 85
+                ? (lang === 'ar' ? 'ضبط الفصاحة اللغوية والتشكيل الكامل للحركات... ✨' : 'Polishing language and complete vowelization... ✨')
+                : (lang === 'ar' ? 'المراجعة النهائية وتجهيز نص القصة... 🌟' : 'Final review and preparing story text... 🌟')}
+            </h3>
+            <p className="text-sm font-bold text-amber-600 dark:text-amber-400">
+              {lang === 'ar'
+                ? 'جاري تأليف حكاية ممتعة وملهمة تناسب الأطفال وفق معطياتك...'
+                : 'Composing an engaging, educational story tailored to your inputs...'}
+            </p>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="max-w-md mx-auto space-y-2 pt-2">
+            <div className="flex justify-between text-xs font-bold text-slate-600 dark:text-slate-400">
+              <span>{lang === 'ar' ? 'جاري التأليف والكتابة...' : 'Writing in progress...'}</span>
+              <span>{textGenProgress}%</span>
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-slate-700 h-3 rounded-full overflow-hidden p-0.5">
+              <div
+                className="bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600 h-full rounded-full transition-all duration-500"
+                style={{ width: `${textGenProgress}%` }}
+              ></div>
+            </div>
           </div>
         </div>
       )}
 
       {/* MAKE A STORY - Step 12: Review Text */}
       {step === 12 && (
-        <div className="glass-panel p-8 rounded-3xl space-y-6 animate-fade-in">
-          <h3 className="text-2xl font-black text-slate-900 dark:text-white border-b pb-4">
-            {lang === 'ar' ? 'مراجعة النص المولد' : 'Review Generated Text'}
-          </h3>
-          <textarea rows="10" value={pastedText} onChange={e => setPastedText(e.target.value)} className="w-full p-4 rounded-xl bg-slate-100 dark:bg-slate-900 border text-base font-medium leading-relaxed"></textarea>
+        <div className={`glass-panel p-8 rounded-3xl space-y-6 animate-fade-in ${lang === 'ar' ? 'font-arabic' : ''}`}>
+          <div className="flex items-center justify-between border-b pb-4">
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+              {lang === 'ar' ? 'مراجعة النص المولد' : 'Review Generated Text'}
+            </h3>
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-600">
+              {lang === 'ar' ? 'يمكنك قراءة وتعديل أي جزء من النص قبل المتابعة' : 'You can review and edit text before proceeding'}
+            </span>
+          </div>
+          <textarea
+            rows="10"
+            value={pastedText}
+            onChange={e => setPastedText(e.target.value)}
+            className="w-full p-4 rounded-xl bg-slate-100 dark:bg-slate-900 border text-base font-medium leading-relaxed focus:ring-2 focus:ring-amber-500 outline-none"
+          ></textarea>
           
-          <div className="flex justify-between pt-4 border-t">
-            <button onClick={() => setStep(10)} className="px-6 py-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 font-bold">
-              {lang === 'ar' ? 'تعديل المعطيات (Modify Story)' : 'Modify Story'}
+          <div className="flex items-center justify-between pt-4 border-t">
+            <button
+              onClick={() => setStep(10)}
+              className="px-6 py-3 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-sm transition-colors"
+            >
+              {lang === 'ar' ? 'تعديل المدخلات' : 'Modify Story'}
             </button>
             <button
               onClick={() => {
@@ -613,10 +707,10 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 setStep(4);
                 handleAnalyzeText();
               }}
-              className="px-8 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-2 shadow-lg"
+              className="px-8 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm flex items-center gap-2 shadow-lg hover:shadow-indigo-500/30 transition-all hover:scale-105 active:scale-95"
             >
-              <span>{lang === 'ar' ? 'تحويل النص إلى صور مسموعة (Convert Story)' : 'Convert Story'}</span>
-              <ArrowRight className="w-5 h-5"/>
+              <span>{lang === 'ar' ? 'تحويل النص إلى قصة مصورة ومسموعة' : 'Convert to Story'}</span>
+              {lang === 'ar' ? <ArrowLeft className="w-5 h-5"/> : <ArrowRight className="w-5 h-5"/>}
             </button>
           </div>
         </div>
@@ -869,13 +963,42 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
           </div>
 
           {isPlanning || !planData ? (
-            <div className="p-12 text-center space-y-4">
-              <Wand2 className="w-12 h-12 text-amber-500 mx-auto animate-spin" />
-              <p className="font-bold text-slate-600 dark:text-slate-300">
-                {lang === 'ar'
-                  ? 'يقوم الذكاء الاصطناعي باستخراج قائمة الشخصيات وتقسيم القصة لمشاهد حرفية بدون تلخيص...'
-                  : 'AI is extracting character profiles and splitting the story into verbatim scenes without summarization...'}
-              </p>
+            <div className="p-10 sm:p-14 text-center space-y-6 animate-fade-in">
+              <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-4 border-amber-500/20 border-t-amber-500 animate-spin"></div>
+                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-xl">
+                  <Wand2 className="w-8 h-8 animate-pulse text-amber-200" />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                  {planningProgress < 35
+                    ? (lang === 'ar' ? 'تحليل فصول وأحداث القصة واستخراج السياق الدرامي... 📖' : 'Analyzing story structure and sequence of events... 📖')
+                    : planningProgress < 70
+                    ? (lang === 'ar' ? 'تحديد الشخصيات وتوليد الأفاتار والملامح البصرية الثابتة... 🎨' : 'Extracting characters & generating visual consistency profiles... 🎨')
+                    : (lang === 'ar' ? 'تقسيم المشاهد حرفياً وصياغة التوجيهات الفنية للرسام... ✨' : 'Segmenting scenes into verbatim slides ready for production... ✨')}
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 font-medium max-w-md mx-auto">
+                  {lang === 'ar'
+                    ? 'يقوم الذكاء الاصطناعي بدراسة النص بدون أي اختصار، وبناء الخطة الفنية الكاملة للشخصيات والمشاهد...'
+                    : 'AI is analyzing the verbatim text to extract characters and segment all story scenes...'}
+                </p>
+              </div>
+
+              {/* Dynamic Progress Bar */}
+              <div className="max-w-md mx-auto space-y-2">
+                <div className="flex justify-between text-xs font-bold text-slate-600 dark:text-slate-400">
+                  <span>{lang === 'ar' ? 'جاري إعداد الخطة الفنية' : 'Preparing Story Plan'}</span>
+                  <span className="text-amber-600 dark:text-amber-400">{planningProgress}%</span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5">
+                  <div
+                    className="bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${planningProgress}%` }}
+                  ></div>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="space-y-6">
@@ -1099,8 +1222,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 </h3>
                 <p className="text-sm font-bold text-amber-600 dark:text-amber-400">
                   {lang === 'ar'
-                    ? `جاري رسم وتجسيد المشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides} بنمط (${artStyle}) (Google Gemini API)...`
-                    : `Drawing scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides} with ${artStyle} style (Google Gemini API)...`}
+                    ? `جاري رسم وتجسيد المشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides} بنمط (${ART_STYLE_NAMES[artStyle]?.[lang] || artStyle})...`
+                    : `Drawing scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides} in (${ART_STYLE_NAMES[artStyle]?.[lang] || artStyle}) style...`}
                 </p>
               </>
             )}
@@ -1112,8 +1235,8 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
                 </h3>
                 <p className="text-sm font-bold text-rose-600 dark:text-rose-400">
                   {lang === 'ar'
-                    ? `جاري توليد الملف الصوتي النقي للمشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides} (Google TTS API)...`
-                    : `Generating crystal-clear narration for scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides} (Google TTS API)...`}
+                    ? `جاري توليد السرد الصوتي المعبر للمشهد ${Math.min(genProgressIndex + 1, totalGenSlides)} من ${totalGenSlides}...`
+                    : `Generating expressive narration for scene ${Math.min(genProgressIndex + 1, totalGenSlides)} of ${totalGenSlides}...`}
                 </p>
               </>
             )}

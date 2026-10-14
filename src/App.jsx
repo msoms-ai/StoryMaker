@@ -31,6 +31,20 @@ function MainRouter() {
 
   const [profileSourceView, setProfileSourceView] = useState('stories-list');
 
+  // Check URL query parameters (e.g. ?story=ID for shared links)
+  React.useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const storyParam = urlParams.get('story');
+      if (storyParam) {
+        setSelectedStoryId(storyParam);
+        setCurrentView('reader');
+      }
+    } catch (e) {
+      console.warn('URL parsing error:', e);
+    }
+  }, []);
+
   // Route navigation wrapper enforcing story creation permissions & limits
   const handleNavigate = (view) => {
     if (view === 'publicProfile') {

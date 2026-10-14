@@ -45,7 +45,7 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
     lang: isArabic ? 'ar' : 'en',
     readTimeMinutes: Math.ceil(totalSlides * 0.8),
     slidesCount: totalSlides,
-    isAiGenerated: isAiGenerated === true,
+    isAiGenerated: Boolean(isAiGenerated === true || isAiGenerated === 'true'),
     status: 'draft',
     authorId: userId || null,
     authorName: authorName || (isArabic ? 'مؤلف مجهول' : 'Anonymous Author'),

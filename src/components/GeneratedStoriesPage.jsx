@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { BookOpen, Clock, Layers, CheckCircle2, ArrowRight, ArrowLeft, Sparkles, Filter, User } from 'lucide-react';
+import { BookOpen, Clock, Layers, CheckCircle2, ArrowRight, ArrowLeft, Sparkles, Filter, User, Share2 } from 'lucide-react';
 import { getCategoryIconComponent } from '../categoryIcons';
+import ShareStoryModal from './ShareStoryModal';
 
 export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryFilter, setSelectedStoryId, setViewingUserId }) {
   const { lang, t } = useLanguage();
@@ -9,6 +10,7 @@ export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryF
   const [categories, setCategories] = useState([]);
   const [activeFilter, setActiveFilter] = useState(selectedCategoryFilter || 'ALL');
   const [loading, setLoading] = useState(true);
+  const [shareStory, setShareStory] = useState(null);
 
   // Load all dynamic categories
   useEffect(() => {
@@ -267,10 +269,23 @@ export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryF
                     </span>
                   </div>
 
-                  <button className="w-full py-3 rounded-xl bg-amber-500 group-hover:bg-amber-600 text-white font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2">
-                    <BookOpen className="w-4 h-4" />
-                    {t('readStoryBtn')}
-                  </button>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button className="flex-1 py-3 rounded-xl bg-amber-500 group-hover:bg-amber-600 text-white font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2">
+                      <BookOpen className="w-4 h-4" />
+                      {t('readStoryBtn')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShareStory(story);
+                      }}
+                      className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-white dark:hover:bg-amber-500 dark:hover:text-white text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700 shadow-sm"
+                      title={lang === 'ar' ? 'مشاركة أو تحميل كـ PDF' : 'Share or Download PDF'}
+                    >
+                      <Share2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
               </div>
@@ -278,6 +293,14 @@ export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryF
           })}
         </div>
       )}
+
+      {/* Share Story & Landscape PDF Modal */}
+      <ShareStoryModal
+        isOpen={Boolean(shareStory)}
+        onClose={() => setShareStory(null)}
+        story={shareStory}
+        lang={lang}
+      />
 
     </div>
   );

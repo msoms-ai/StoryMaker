@@ -1420,7 +1420,8 @@ app.post('/api/stories/start-generation', async (req, res) => {
   }
 
   try {
-    await addStoryJob(currentStoryId, folderName, planData, { ...settings, title });
+    const isAi = Boolean(settings?.isAiGenerated === true || settings?.isAiGenerated === 'true');
+    await addStoryJob(currentStoryId, folderName, planData, { ...settings, title, isAiGenerated: isAi });
     res.json({ success: true, storyId: currentStoryId, folderName });
   } catch (err) {
     console.error('[API] Failed to queue story:', err);
@@ -1524,7 +1525,7 @@ app.post('/api/stories/finalize-generation', async (req, res) => {
     lang: isArabic ? 'ar' : 'en',
     readTimeMinutes: Math.ceil(slides.length * 0.8),
     slidesCount: slides.length,
-    isAiGenerated: isAiGenerated === true,
+    isAiGenerated: Boolean(isAiGenerated === true || isAiGenerated === 'true'),
     status: 'draft',
     authorId: userId || null,
     authorName,
