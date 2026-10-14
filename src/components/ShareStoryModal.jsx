@@ -48,7 +48,15 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
     setPdfProgress({ current: 0, total: slides.length });
 
     try {
-      // Create landscape A4 PDF: 297mm width x 210mm height
+      // 1. Ensure all custom Arabic fonts (Cairo, Tajawal, etc.) are 100% loaded
+      if (document.fonts) {
+        await document.fonts.ready;
+      }
+
+      // Small delay to ensure off-screen layout painting is complete
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // 2. Create landscape A4 PDF: 297mm width x 210mm height
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
@@ -69,7 +77,8 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
-          logging: false
+          logging: false,
+          letterRendering: false // Critical: prevents character-by-character tearing
         });
 
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -253,14 +262,24 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
         ref={printContainerRef}
         style={{
           position: 'fixed',
-          top: '-10000px',
-          left: '-10000px',
-          width: '1122px', // 297mm standard aspect ratio
-          opacity: 0,
+          top: 0,
+          left: 0,
+          width: '1122px',
+          opacity: 1,
+          zIndex: -9999,
           pointerEvents: 'none',
-          zIndex: -1
+          visibility: 'visible'
         }}
       >
+        <style>{`
+          .pdf-slide-page, .pdf-slide-page * {
+            letter-spacing: 0px !important;
+            word-spacing: 0px !important;
+            text-rendering: optimizeLegibility !important;
+            font-feature-settings: "liga" 1, "kern" 1 !important;
+            -webkit-font-feature-settings: "liga" 1, "kern" 1 !important;
+          }
+        `}</style>
         {slides.map((slide, idx) => (
           <div
             key={idx}
@@ -273,43 +292,52 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
-              padding: '36px 44px',
+              padding: '36px 48px',
               boxSizing: 'border-box',
-              fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif",
+              fontFamily: "'Cairo', 'Tajawal', sans-serif",
               direction: lang === 'ar' ? 'rtl' : 'ltr'
             }}
           >
-            {/* Header: Website Domain / Logo & Story Title */}
+            {/* Header: Story Title on Right (in RTL), Domain & Platform on Left */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               paddingBottom: '16px',
-              borderBottom: '2px solid #e2e8f0'
+              borderBottom: '2px solid #e2e8f0',
+              direction: lang === 'ar' ? 'rtl' : 'ltr'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Primary Story Title */}
+              <div style={{
+                fontSize: '22px',
+                fontWeight: '700',
+                color: '#1e293b',
+                fontFamily: "'Cairo', 'Tajawal', sans-serif",
+                maxWidth: '650px',
+                lineHeight: '1.4',
+                direction: lang === 'ar' ? 'rtl' : 'ltr',
+                textAlign: lang === 'ar' ? 'right' : 'left'
+              }}>
+                {storyTitle}
+              </div>
+
+              {/* Website Branding */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                direction: 'ltr'
+              }}>
                 <span style={{
-                  fontSize: '20px',
-                  fontWeight: '900',
-                  color: '#d97706',
-                  letterSpacing: '0.5px'
+                  fontSize: '18px',
+                  fontWeight: '800',
+                  color: '#d97706'
                 }}>
                   {window.location.hostname || 'msoms.ai'}
                 </span>
                 <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#64748b' }}>
                   | {lang === 'ar' ? 'منصة قصص للذكاء الاصطناعي' : 'Qisas AI Platform'}
                 </span>
-              </div>
-              <div style={{
-                fontSize: '18px',
-                fontWeight: '900',
-                color: '#1e293b',
-                maxWidth: '500px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}>
-                {storyTitle}
               </div>
             </div>
 
@@ -319,7 +347,8 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
               flex: 1,
               alignItems: 'center',
               gap: '36px',
-              padding: '24px 0'
+              padding: '24px 0',
+              direction: lang === 'ar' ? 'rtl' : 'ltr'
             }}>
               {/* Slide Image */}
               <div style={{
@@ -332,7 +361,8 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
                 backgroundColor: '#f8fafc',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                flexShrink: 0
               }}>
                 {slide.imageFile ? (
                   <img
@@ -358,28 +388,38 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
-                padding: '16px'
+                padding: '12px 16px',
+                direction: lang === 'ar' ? 'rtl' : 'ltr',
+                textAlign: lang === 'ar' ? 'right' : 'left'
               }}>
+                {/* Scene Title Badge */}
                 <div style={{
                   display: 'inline-block',
-                  alignSelf: lang === 'ar' ? 'flex-start' : 'flex-start',
+                  alignSelf: 'flex-start',
                   backgroundColor: '#fef3c7',
                   color: '#b45309',
-                  padding: '6px 16px',
+                  padding: '6px 18px',
                   borderRadius: '12px',
-                  fontSize: '14px',
-                  fontWeight: '800',
-                  marginBottom: '20px'
+                  fontSize: '15px',
+                  fontWeight: '700',
+                  marginBottom: '20px',
+                  direction: lang === 'ar' ? 'rtl' : 'ltr'
                 }}>
                   {slide.title || (lang === 'ar' ? `المشهد ${idx + 1}` : `Scene ${idx + 1}`)}
                 </div>
+
+                {/* Verbatim Slide Text with Pure Arabic Cairo Typography */}
                 <div style={{
-                  fontSize: '22px',
-                  lineHeight: '1.8',
-                  fontWeight: '700',
+                  fontSize: '24px',
+                  lineHeight: '2.0',
+                  fontWeight: '600',
                   color: '#1e293b',
                   textAlign: lang === 'ar' ? 'right' : 'left',
-                  letterSpacing: '0.2px'
+                  direction: lang === 'ar' ? 'rtl' : 'ltr',
+                  fontFamily: "'Cairo', 'Tajawal', sans-serif",
+                  wordBreak: 'normal',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'normal'
                 }}>
                   {slide.text}
                 </div>
@@ -395,21 +435,22 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
               borderTop: '2px solid #e2e8f0',
               fontSize: '13px',
               fontWeight: '700',
-              color: '#64748b'
+              color: '#64748b',
+              direction: lang === 'ar' ? 'rtl' : 'ltr'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: '#d97706', fontWeight: '900' }}>{window.location.hostname || 'msoms.ai'}</span>
+                <span style={{ color: '#d97706', fontWeight: '800' }}>{window.location.hostname || 'msoms.ai'}</span>
                 <span>•</span>
                 <span>{lang === 'ar' ? 'المؤلف: ' : 'Author: '}</span>
                 <span style={{ color: '#0f172a' }}>{story.authorName || (lang === 'ar' ? 'مؤلف القصة' : 'Story Author')}</span>
               </div>
               <div>
-                {lang === 'ar' ? 'تاريخ النشر: ' : 'Date: '}
+                <span>{lang === 'ar' ? 'تاريخ النشر: ' : 'Date: '}</span>
                 <span style={{ color: '#0f172a' }}>{formattedDate}</span>
               </div>
               <div style={{
                 backgroundColor: '#f1f5f9',
-                padding: '4px 14px',
+                padding: '4px 16px',
                 borderRadius: '8px',
                 color: '#334155',
                 fontWeight: '800'
