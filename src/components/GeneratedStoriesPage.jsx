@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { BookOpen, Clock, Layers, CheckCircle2, ArrowRight, ArrowLeft, Sparkles, Filter, User, Share2 } from 'lucide-react';
 import { getCategoryIconComponent } from '../categoryIcons';
 import ShareStoryModal from './ShareStoryModal';
 
 export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryFilter, setSelectedStoryId, setViewingUserId }) {
   const { lang, t } = useLanguage();
+  const { user } = useAuth();
   const [stories, setStories] = useState([]);
   const [categories, setCategories] = useState([]);
   const [activeFilter, setActiveFilter] = useState(selectedCategoryFilter || 'ALL');
@@ -177,7 +179,24 @@ export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryF
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           {stories.map((story) => {
-            const isCompleted = story.readProgress?.completed;
+            // Option 1 Logic:
+            // 1. Completed by logged-in user
+            const isCompleted = Boolean(
+              user && (
+                (Array.isArray(story.completedBy) && story.completedBy.includes(user.id)) ||
+                story.userProgress?.[user.id]?.completed
+              )
+            );
+
+            // 2. New: Published within the last 7 days
+            const isNew = (() => {
+              if (!story.createdAt) return false;
+              const createdDate = new Date(story.createdAt).getTime();
+              if (isNaN(createdDate)) return false;
+              const diffDays = (Date.now() - createdDate) / (1000 * 60 * 60 * 24);
+              return diffDays >= 0 && diffDays <= 7;
+            })();
+
             const coverImage = story.slides?.[0]?.imageFile;
             const storyTitle = (typeof story.name === 'object' && story.name !== null
               ? (story.name[lang] || story.name.ar || story.name.en)
@@ -203,19 +222,22 @@ export default function GeneratedStoriesPage({ setCurrentView, selectedCategoryF
                     </div>
                   )}
 
-                  {/* Read / Unread Status Badge */}
-                  <div className="absolute top-3 right-3">
-                    {isCompleted ? (
-                      <span className="px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold shadow-md flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        {t('completedBadge')}
-                      </span>
-                    ) : (
-                      <span className="px-3 py-1 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-md">
-                        {t('unreadBadge')}
-                      </span>
-                    )}
-                  </div>
+                  {/* Status Badge: Option 1 (Completed by user, or New if within 7 days) */}
+                  {(isCompleted || isNew) && (
+                    <div className="absolute top-3 right-3">
+                      {isCompleted ? (
+                        <span className="px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold shadow-md flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          {t('completedBadge')}
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-md flex items-center gap-1">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          {t('newBadge') || t('unreadBadge')}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Info Container */}

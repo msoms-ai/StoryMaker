@@ -30,7 +30,8 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
       .then((data) => {
         if (data.success && data.story) {
           setStory(data.story);
-          const initialSlide = data.story.readProgress?.currentSlide || 0;
+          const userProg = user ? data.story.userProgress?.[user.id] : null;
+          const initialSlide = userProg?.currentSlide ?? data.story.readProgress?.currentSlide ?? 0;
           setCurrentSlideIdx(initialSlide);
           maxReachedSlideRef.current = initialSlide;
         }

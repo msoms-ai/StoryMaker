@@ -32,6 +32,7 @@ const translations = {
     slidesCount: 'مشاهد',
     completedBadge: 'مكتملة',
     unreadBadge: 'جديدة',
+    newBadge: 'جديدة',
 
     // Wizard
     wizardTitle: 'صانع القصص التفاعلي (8 خطوات)',
@@ -105,6 +106,7 @@ const translations = {
     slidesCount: 'scenes',
     completedBadge: 'Completed',
     unreadBadge: 'New',
+    newBadge: 'New',
 
     // Wizard
     wizardTitle: 'Interactive Story Generator (8 Steps)',
