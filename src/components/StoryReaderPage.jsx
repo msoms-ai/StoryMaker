@@ -145,10 +145,12 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           {story.authorName && (
             <div 
               onClick={() => {
-                if(setViewingUserId) setViewingUserId(story.authorId || story.userId);
+                const id = story.authorId || story.userId || 'anonymous';
+                if (setViewingUserId) setViewingUserId(id);
                 setCurrentView('publicProfile');
               }}
               className="flex items-center gap-1.5 mt-1 text-sm text-slate-500 hover:text-amber-500 hover:underline cursor-pointer transition-colors font-bold"
+              title={story.authorName}
             >
               <User className="w-4 h-4" />
               <span>{story.authorName}</span>

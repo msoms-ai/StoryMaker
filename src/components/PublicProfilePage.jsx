@@ -9,30 +9,56 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!userId) {
-      setLoading(false);
-      setError('Unknown Account');
-      return;
-    }
+    const targetId = (!userId || userId === 'unknown' || userId === 'null') ? 'anonymous' : userId;
 
     const fetchProfile = async () => {
       try {
-        const res = await fetch(`/api/user/public/${userId}`);
+        const res = await fetch(`/api/user/public/${targetId}`);
         const data = await res.json();
         if (data.success && data.profile) {
           setProfile(data.profile);
         } else {
-          setError(data.message || 'Profile not found');
+          if (targetId === 'anonymous') {
+            setProfile({
+              id: 'anonymous',
+              firstName: 'مؤلف',
+              lastName: 'مجهول',
+              displayName: lang === 'ar' ? 'مؤلف مجهول (كاتب زائر)' : 'Anonymous Author (Guest Storyteller)',
+              avatarUrl: null,
+              coverUrl: null,
+              socialLinks: {},
+              role: 'Story Reader',
+              isAnonymous: true,
+              stories: []
+            });
+          } else {
+            setError(data.message || 'Profile not found');
+          }
         }
       } catch (err) {
-        setError(err.message);
+        if (targetId === 'anonymous') {
+          setProfile({
+            id: 'anonymous',
+            firstName: 'مؤلف',
+            lastName: 'مجهول',
+            displayName: lang === 'ar' ? 'مؤلف مجهول (كاتب زائر)' : 'Anonymous Author (Guest Storyteller)',
+            avatarUrl: null,
+            coverUrl: null,
+            socialLinks: {},
+            role: 'Story Reader',
+            isAnonymous: true,
+            stories: []
+          });
+        } else {
+          setError(err.message);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchProfile();
-  }, [userId]);
+  }, [userId, lang]);
 
   if (loading) {
     return (
@@ -45,16 +71,16 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
   if (error || !profile) {
     return (
       <div className={`max-w-md mx-auto my-16 p-8 text-center glass-panel rounded-3xl ${lang === 'ar' ? 'font-arabic' : ''}`}>
-        <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-3" />
+        <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
         <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">
           {lang === 'ar' ? 'الملف الشخصي غير متاح' : 'Profile Unavailable'}
         </h3>
         <p className="text-sm text-slate-500 mb-6">
-          {lang === 'ar' ? 'هذا الحساب خاص أو غير موجود.' : 'This account is private or does not exist.'}
+          {lang === 'ar' ? 'هذا الحساب خاص أو تم نشره ككاتب زائر.' : 'This account is private or was published as a guest author.'}
         </p>
         <button
           onClick={() => setCurrentView(sourceView || 'stories-list')}
-          className="px-6 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm shadow-md"
+          className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm shadow-md transition-colors"
         >
           {lang === 'ar' ? 'العودة للقصص' : 'Back to Stories'}
         </button>
@@ -62,8 +88,8 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
     );
   }
 
-  const { firstName, lastName, avatarUrl, coverUrl, socialLinks, role, stories } = profile;
-  const fullName = `${firstName || ''} ${lastName || ''}`.trim() || 'Author';
+  const { firstName, lastName, displayName, avatarUrl, coverUrl, socialLinks, role, stories = [], isAnonymous } = profile;
+  const fullName = displayName || `${firstName || ''} ${lastName || ''}`.trim() || (isAnonymous ? (lang === 'ar' ? 'مؤلف مجهول' : 'Anonymous Author') : 'Author');
 
   return (
     <div className={`max-w-5xl mx-auto px-4 py-8 ${lang === 'ar' ? 'font-arabic' : ''} space-y-8 animate-fade-in`}>
@@ -91,7 +117,11 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
         <div className="px-8 pb-8 relative">
           {/* Avatar (Overlapping) */}
           <div className={`absolute -top-16 ${lang === 'ar' ? 'right-8' : 'left-8'} w-32 h-32 rounded-full overflow-hidden border-4 border-white dark:border-slate-900 bg-slate-100 dark:bg-slate-800 shadow-xl flex items-center justify-center`}>
-             {avatarUrl ? (
+             {isAnonymous ? (
+                <div className="w-full h-full bg-gradient-to-tr from-amber-400 to-amber-600 flex items-center justify-center text-white">
+                  <User className="w-16 h-16" />
+                </div>
+              ) : avatarUrl ? (
                 <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
               ) : (
                 <User className="w-16 h-16 text-slate-400" />
@@ -104,10 +134,18 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
                 {fullName}
               </h1>
               <span className="inline-block mt-2 px-3 py-1 rounded-full text-xs font-black bg-indigo-600 text-white shadow-sm">
-                {role === 'Admin' ? (lang === 'ar' ? 'مدير النظام' : 'Admin') : 
+                {isAnonymous ? (lang === 'ar' ? 'كاتب زائر' : 'Guest Creator') :
+                 role === 'Admin' ? (lang === 'ar' ? 'مدير النظام' : 'Admin') : 
                  role === 'Story Maker' ? (lang === 'ar' ? 'صانع قصص' : 'Story Maker') : 
                  (lang === 'ar' ? 'قارئ قصص' : 'Story Reader')}
               </span>
+              {isAnonymous && (
+                <p className="mt-2 text-xs text-slate-500 max-w-md">
+                  {lang === 'ar'
+                    ? 'هذا الكاتب قام بإنشاء القصة دون تسجيل الدخول أو ربطها بحساب مسجل محدد.'
+                    : 'This creator authored stories without linking to a registered account.'}
+                </p>
+              )}
             </div>
             
             {/* Social Links */}
@@ -144,12 +182,16 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
       {/* User's Stories Grid */}
       <div className="space-y-6">
         <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-          {lang === 'ar' ? `مكتبة ${firstName || 'المؤلف'}` : `${firstName || 'Author'}'s Library`}
+          {isAnonymous
+            ? (lang === 'ar' ? 'قصص منشورة لمؤلفين زوار' : 'Stories by Guest Creators')
+            : (lang === 'ar' ? `مكتبة ${firstName || 'المؤلف'}` : `${firstName || 'Author'}'s Library`)}
         </h3>
         
         {stories.length === 0 ? (
           <div className="p-8 text-center text-slate-500 font-bold bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
-            {lang === 'ar' ? 'لم يقم هذا المستخدم بنشر أي قصص بعد.' : 'This user has not published any stories yet.'}
+            {isAnonymous
+              ? (lang === 'ar' ? 'لا توجد قصص زوار إضافية حالياً.' : 'No additional guest stories at this time.')
+              : (lang === 'ar' ? 'لم يقم هذا المستخدم بنشر أي قصص بعد.' : 'This user has not published any stories yet.')}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">

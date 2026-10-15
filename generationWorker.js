@@ -33,6 +33,17 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
   const totalSlides = planData.slides ? planData.slides.length : 0;
   const isArabic = lang === 'ar' || /[\u0600-\u06FF]/.test(title);
 
+  let effectiveAuthorName = authorName;
+  if (userId) {
+    try {
+      const db = readDB();
+      const u = db.users && db.users.find(user => user.id === userId);
+      if (u) {
+        effectiveAuthorName = (u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : (u.username || u.email?.split('@')[0])) || effectiveAuthorName;
+      }
+    } catch (e) {}
+  }
+
   const draftStory = {
     id: (Date.now() % 100000).toString().padStart(4, '0'),
     folderName,
@@ -48,7 +59,7 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
     isAiGenerated: Boolean(isAiGenerated === true || isAiGenerated === 'true'),
     status: 'draft',
     authorId: userId || null,
-    authorName: authorName || (isArabic ? 'مؤلف مجهول' : 'Anonymous Author'),
+    authorName: effectiveAuthorName || (isArabic ? 'مؤلف مجهول' : 'Anonymous Author'),
     readProgress: { currentSlide: 0, completed: false },
     createdAt: new Date().toISOString(),
     comments: '',

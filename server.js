@@ -162,6 +162,17 @@ function initDatabase() {
     adminUser.status = 'active';
   }
 
+  // Auto-attribute unlinked / unknown stories to admin user if present
+  if (adminUser) {
+    const adminFullName = (adminUser.firstName ? `${adminUser.firstName} ${adminUser.lastName || ''}`.trim() : adminUser.email);
+    db.stories.forEach(story => {
+      if (!story.authorId && (story.authorName === 'مؤلف مجهول' || !story.authorName)) {
+        story.authorId = adminUser.id;
+        story.authorName = adminFullName;
+      }
+    });
+  }
+
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
 }
 
@@ -520,8 +531,30 @@ app.post('/api/user/verify-new-email', authenticateUser, (req, res) => {
 
 // GET /api/user/public/:id - Fetch public profile
 app.get('/api/user/public/:id', (req, res) => {
+  const reqId = req.params.id;
   const db = readDB();
-  const user = db.users.find(u => u.id === req.params.id);
+
+  // If user requested unknown or anonymous creator
+  if (!reqId || reqId === 'anonymous' || reqId === 'unknown' || reqId === 'null') {
+    const anonStories = db.stories.filter(s => (!s.authorId || s.authorName === 'مؤلف مجهول' || s.authorName === 'Anonymous Author') && s.status === 'published');
+    return res.json({
+      success: true,
+      profile: {
+        id: 'anonymous',
+        firstName: 'مؤلف',
+        lastName: 'مجهول',
+        displayName: 'مؤلف مجهول (كاتب زائر)',
+        avatarUrl: null,
+        coverUrl: null,
+        socialLinks: {},
+        role: 'Story Reader',
+        isAnonymous: true,
+        stories: anonStories
+      }
+    });
+  }
+
+  const user = db.users.find(u => u.id === reqId);
   
   if (!user || user.publicProfileEnabled === false) {
     return res.status(404).json({ success: false, message: 'Profile not found or private' });
@@ -533,10 +566,12 @@ app.get('/api/user/public/:id', (req, res) => {
     id: user.id,
     firstName: user.firstName,
     lastName: user.lastName,
+    displayName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username || 'Author',
     avatarUrl: user.avatarUrl,
     coverUrl: user.coverUrl,
     socialLinks: user.socialLinks || {},
     role: user.role,
+    isAnonymous: false,
     stories: userStories
   };
 
@@ -1422,7 +1457,36 @@ app.post('/api/stories/start-generation', async (req, res) => {
 
   try {
     const isAi = Boolean(settings?.isAiGenerated === true || settings?.isAiGenerated === 'true');
-    await addStoryJob(currentStoryId, folderName, planData, { ...settings, title, isAiGenerated: isAi });
+
+    // Resolve user ID and author name reliably from token or settings
+    let effectiveUserId = settings?.userId || null;
+    const authHeader = req.headers.authorization;
+    if (!effectiveUserId && authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+        effectiveUserId = decoded.id;
+      } catch (e) {}
+    }
+
+    let effectiveAuthorName = settings?.authorName;
+    if (effectiveUserId) {
+      try {
+        const db = readDB();
+        const dbUser = db.users.find(u => u.id === effectiveUserId);
+        if (dbUser) {
+          const fullName = (dbUser.firstName ? `${dbUser.firstName} ${dbUser.lastName || ''}`.trim() : (dbUser.username || dbUser.email?.split('@')[0]));
+          if (fullName) effectiveAuthorName = fullName;
+        }
+      } catch (e) {}
+    }
+
+    await addStoryJob(currentStoryId, folderName, planData, { 
+      ...settings, 
+      title, 
+      isAiGenerated: isAi,
+      userId: effectiveUserId,
+      authorName: effectiveAuthorName
+    });
     res.json({ success: true, storyId: currentStoryId, folderName });
   } catch (err) {
     console.error('[API] Failed to queue story:', err);
@@ -1545,7 +1609,7 @@ app.post('/api/stories/finalize-generation', async (req, res) => {
 
 // POST /api/stories/:id/status - Approve / Publish or Delete
 app.post('/api/stories/:id/status', (req, res) => {
-  const { status } = req.body;
+  const { status, userId, authorName } = req.body;
   const db = readDB();
   const storyIndex = db.stories.findIndex((s) => s.id === req.params.id);
 
@@ -1565,6 +1629,31 @@ app.post('/api/stories/:id/status', (req, res) => {
     return res.json({ success: true, action: 'deleted' });
   } else {
     story.status = 'published';
+
+    // If story has no author or author is marked as unknown, associate with publishing user
+    let effectiveUserId = userId || null;
+    const authHeader = req.headers.authorization;
+    if (!effectiveUserId && authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+        effectiveUserId = decoded.id;
+      } catch (e) {}
+    }
+
+    if (effectiveUserId) {
+      const dbUser = db.users.find(u => u.id === effectiveUserId);
+      if (dbUser) {
+        story.authorId = dbUser.id;
+        const fullName = (dbUser.firstName ? `${dbUser.firstName} ${dbUser.lastName || ''}`.trim() : (dbUser.username || dbUser.email?.split('@')[0]));
+        story.authorName = fullName || authorName || story.authorName;
+      } else {
+        story.authorId = effectiveUserId;
+        if (authorName) story.authorName = authorName;
+      }
+    } else if (authorName && (!story.authorName || story.authorName === 'مؤلف مجهول' || story.authorName === 'Anonymous Author')) {
+      story.authorName = authorName;
+    }
+
     writeDB(db);
     return res.json({ success: true, action: 'published', story });
   }

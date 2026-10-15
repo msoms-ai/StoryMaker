@@ -200,6 +200,14 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     }
   };
 
+  const getAuthorDisplayName = () => {
+    if (!user) return lang === 'ar' ? 'مؤلف مجهول' : 'Anonymous Author';
+    if (user.firstName) {
+      return `${user.firstName} ${user.lastName || ''}`.trim();
+    }
+    return user.username || (user.email ? user.email.split('@')[0] : (lang === 'ar' ? 'مؤلف مجهول' : 'Anonymous Author'));
+  };
+
   const handleApprovePlanStartFullGeneration = async () => {
     setStep(5);
     setIsGenerating(true);
@@ -211,10 +219,16 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     setTotalGenSlides(slidesCount);
 
     try {
+      const authorDisplayName = getAuthorDisplayName();
+      const token = localStorage.getItem('qisas_token');
+
       // 1. Send all data to start-generation to queue the job
       const startRes = await fetch('/api/stories/start-generation', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ 
           title: planData ? planData.storyTitle : storyName,
           planData: planData,
@@ -225,7 +239,7 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
             artStyle: artStyle,
             lang: lang,
             userId: user?.id,
-            authorName: user?.username
+            authorName: authorDisplayName
           }
         })
       });
@@ -331,11 +345,21 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     stopAllAudio();
     if (!draftStory) return;
 
+    const token = localStorage.getItem('qisas_token');
+    const authorDisplayName = getAuthorDisplayName();
+
     if (action === 'approve') {
       await fetch(`/api/stories/${draftStory.id}/status`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'published' })
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ 
+          status: 'published',
+          userId: user?.id || null,
+          authorName: authorDisplayName
+        })
       });
       setDraftStory(null);
       setPlanData(null);
@@ -344,7 +368,10 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     } else if (action === 'reject') {
       await fetch(`/api/stories/${draftStory.id}/status`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ status: 'deleted' })
       });
       setDraftStory(null);

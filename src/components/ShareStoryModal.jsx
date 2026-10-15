@@ -407,18 +407,24 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
               }}>
                 {/* Scene Title Badge */}
                 <div style={{
-                  display: 'inline-block',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   alignSelf: 'flex-start',
                   backgroundColor: '#fef3c7',
                   color: '#b45309',
-                  padding: '6px 18px',
+                  height: '38px',
+                  padding: '0 20px',
                   borderRadius: '12px',
-                  fontSize: '15px',
+                  fontSize: '16px',
                   fontWeight: '700',
                   marginBottom: '20px',
-                  direction: lang === 'ar' ? 'rtl' : 'ltr'
+                  direction: lang === 'ar' ? 'rtl' : 'ltr',
+                  fontFamily: "'Dubai', sans-serif"
                 }}>
-                  {slide.title || (lang === 'ar' ? `المشهد ${idx + 1}` : `Scene ${idx + 1}`)}
+                  <span style={{ display: 'inline-block', lineHeight: '1', marginTop: '-4px' }}>
+                    {slide.title || (lang === 'ar' ? `المشهد ${idx + 1}` : `Scene ${idx + 1}`)}
+                  </span>
                 </div>
 
                 {/* Verbatim Slide Text with Pure Dubai Typography */}
@@ -462,13 +468,21 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
                 <span style={{ color: '#0f172a' }}>{formattedDate}</span>
               </div>
               <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 backgroundColor: '#f1f5f9',
-                padding: '4px 16px',
+                height: '32px',
+                padding: '0 16px',
                 borderRadius: '8px',
                 color: '#334155',
-                fontWeight: '800'
+                fontWeight: '800',
+                fontSize: '13px',
+                fontFamily: "'Dubai', sans-serif"
               }}>
-                {lang === 'ar' ? `الصفحة ${idx + 1} من ${slides.length}` : `Page ${idx + 1} of ${slides.length}`}
+                <span style={{ display: 'inline-block', lineHeight: '1', marginTop: '-3px' }}>
+                  {lang === 'ar' ? `الصفحة ${idx + 1} من ${slides.length}` : `Page ${idx + 1} of ${slides.length}`}
+                </span>
               </div>
             </div>
 
