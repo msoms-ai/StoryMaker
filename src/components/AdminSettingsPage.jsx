@@ -5,6 +5,7 @@ import { Settings, Sliders, Type, ShieldAlert, Plus, Trash2, Edit3, CheckCircle2
 import { getCategoryIconComponent, suggestCategoryIcon, AVAILABLE_CATEGORY_ICONS } from '../categoryIcons';
 
 const FONTS = [
+  { id: 'Dubai', name: 'خط دبي (Dubai Font)' },
   { id: 'Cairo', name: 'خط كايرو (Cairo)' },
   { id: 'Tajawal', name: 'خط تجوال (Tajawal)' },
   { id: 'Amiri', name: 'خط أميري (Amiri)' },

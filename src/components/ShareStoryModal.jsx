@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Share2, Copy, Check, Download, FileText, Globe, Calendar, User, Sparkles, MessageCircle, Send, Twitter, Facebook } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { DUBAI_FONT_CSS } from '../utils/dubaiFont';
 
 export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' }) {
   const [copied, setCopied] = useState(false);
@@ -48,8 +49,17 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
     setPdfProgress({ current: 0, total: slides.length });
 
     try {
-      // 1. Ensure all custom Arabic fonts (Cairo, Tajawal, etc.) are 100% loaded
+      // 1. Ensure Dubai font is 100% loaded in document.fonts before capturing
       if (document.fonts) {
+        try {
+          const dubaiReg = new FontFace('Dubai', 'url(/Fonts/Dubai-Regular.ttf)', { weight: '400' });
+          const dubaiBold = new FontFace('Dubai', 'url(/Fonts/Dubai-Bold.ttf)', { weight: '700' });
+          await Promise.all([dubaiReg.load().catch(() => {}), dubaiBold.load().catch(() => {})]);
+          document.fonts.add(dubaiReg);
+          document.fonts.add(dubaiBold);
+        } catch (e) {
+          console.warn('Font load notice:', e);
+        }
         await document.fonts.ready;
       }
 
@@ -272,7 +282,10 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
         }}
       >
         <style>{`
+          ${DUBAI_FONT_CSS}
+
           .pdf-slide-page, .pdf-slide-page * {
+            font-family: 'Dubai', sans-serif !important;
             letter-spacing: 0px !important;
             word-spacing: 0px !important;
             text-rendering: optimizeLegibility !important;
@@ -294,7 +307,7 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
               justifyContent: 'space-between',
               padding: '36px 48px',
               boxSizing: 'border-box',
-              fontFamily: "'Cairo', 'Tajawal', sans-serif",
+              fontFamily: "'Dubai', sans-serif",
               direction: lang === 'ar' ? 'rtl' : 'ltr'
             }}
           >
@@ -312,7 +325,7 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
                 fontSize: '22px',
                 fontWeight: '700',
                 color: '#1e293b',
-                fontFamily: "'Cairo', 'Tajawal', sans-serif",
+                fontFamily: "'Dubai', sans-serif",
                 maxWidth: '650px',
                 lineHeight: '1.4',
                 direction: lang === 'ar' ? 'rtl' : 'ltr',
@@ -408,7 +421,7 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
                   {slide.title || (lang === 'ar' ? `المشهد ${idx + 1}` : `Scene ${idx + 1}`)}
                 </div>
 
-                {/* Verbatim Slide Text with Pure Arabic Cairo Typography */}
+                {/* Verbatim Slide Text with Pure Dubai Typography */}
                 <div style={{
                   fontSize: '24px',
                   lineHeight: '2.0',
@@ -416,7 +429,7 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
                   color: '#1e293b',
                   textAlign: lang === 'ar' ? 'right' : 'left',
                   direction: lang === 'ar' ? 'rtl' : 'ltr',
-                  fontFamily: "'Cairo', 'Tajawal', sans-serif",
+                  fontFamily: "'Dubai', sans-serif",
                   wordBreak: 'normal',
                   overflowWrap: 'break-word',
                   whiteSpace: 'normal'

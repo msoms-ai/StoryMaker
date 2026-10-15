@@ -47,6 +47,7 @@ const DB_FILE = path.join(STORIES_DIR, 'database.json');
 app.use('/STORIES', express.static(STORIES_DIR));
 app.use('/USERS', express.static(USERS_DIR));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/Fonts', express.static(path.join(__dirname, 'Fonts')));
 
 // Category Data
 const DEFAULT_CATEGORIES = [

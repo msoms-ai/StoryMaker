@@ -1,5 +1,37 @@
 /* Custom Qisas Design System - Vanilla CSS */
 
+@font-face {
+  font-family: 'Dubai';
+  src: url('/Fonts/Dubai-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Dubai';
+  src: url('/Fonts/Dubai-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Dubai';
+  src: url('/Fonts/Dubai-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Dubai';
+  src: url('/Fonts/Dubai-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg-main: #f8fafc;
   --text-main: #0f172a;
@@ -9,7 +41,7 @@
   --primary-indigo: #4f46e5;
   --primary-emerald: #10b981;
   --primary-rose: #f43f5e;
-  --story-font: 'Cairo', 'Tajawal', sans-serif;
+  --story-font: 'Dubai', 'Cairo', 'Tajawal', sans-serif;
 }
 
 .dark {
