@@ -16,6 +16,7 @@ import StoriesModeratorPage from './components/StoriesModeratorPage';
 import AuthModal from './components/AuthModal';
 import { AboutPage, RulesPage, FeedbackPage, ContactPage, UpdatesPage } from './components/Pages';
 import HelpPage from './components/HelpPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Wrench, ShieldCheck, Lock } from 'lucide-react';
 
 export const UserViewContext = React.createContext();
@@ -117,82 +118,84 @@ function MainRouter() {
 
       {/* View Router */}
       <main className="flex-1">
-        {currentView === 'landing' && (
-          <LandingPage
-            setCurrentView={handleNavigate}
-            setSelectedStoryId={setSelectedStoryId}
-          />
-        )}
+        <ErrorBoundary onReset={() => handleNavigate('landing')}>
+          {currentView === 'landing' && (
+            <LandingPage
+              setCurrentView={handleNavigate}
+              setSelectedStoryId={setSelectedStoryId}
+            />
+          )}
 
-        {currentView === 'wizard' && (
-          <StoryGenerationWizard
-            setCurrentView={handleNavigate}
-            setSelectedStoryId={setSelectedStoryId}
-          />
-        )}
+          {currentView === 'wizard' && (
+            <StoryGenerationWizard
+              setCurrentView={handleNavigate}
+              setSelectedStoryId={setSelectedStoryId}
+            />
+          )}
 
-        {currentView === 'categories' && (
-          <StoryCategoriesPage
-            setCurrentView={handleNavigate}
-            setSelectedCategoryFilter={setSelectedCategoryFilter}
-          />
-        )}
+          {currentView === 'categories' && (
+            <StoryCategoriesPage
+              setCurrentView={handleNavigate}
+              setSelectedCategoryFilter={setSelectedCategoryFilter}
+            />
+          )}
 
-        {currentView === 'stories-list' && (
-          <GeneratedStoriesPage
-            setCurrentView={handleNavigate}
-            selectedCategoryFilter={selectedCategoryFilter}
-            setSelectedStoryId={setSelectedStoryId}
-            setViewingUserId={setViewingUserId}
-          />
-        )}
+          {currentView === 'stories-list' && (
+            <GeneratedStoriesPage
+              setCurrentView={handleNavigate}
+              selectedCategoryFilter={selectedCategoryFilter}
+              setSelectedStoryId={setSelectedStoryId}
+              setViewingUserId={setViewingUserId}
+            />
+          )}
 
-        {currentView === 'reader' && (
-          <StoryReaderPage
-            storyId={selectedStoryId}
-            setCurrentView={handleNavigate}
-            setViewingUserId={setViewingUserId}
-          />
-        )}
+          {currentView === 'reader' && (
+            <StoryReaderPage
+              storyId={selectedStoryId}
+              setCurrentView={handleNavigate}
+              setViewingUserId={setViewingUserId}
+            />
+          )}
 
-        {currentView === 'profile' && (
-          <UserProfilePage setCurrentView={handleNavigate} />
-        )}
+          {currentView === 'profile' && (
+            <UserProfilePage setCurrentView={handleNavigate} />
+          )}
 
-        {currentView === 'packages' && (
-          <PackagesPricingPage setCurrentView={handleNavigate} />
-        )}
+          {currentView === 'packages' && (
+            <PackagesPricingPage setCurrentView={handleNavigate} />
+          )}
 
-        {currentView === 'admin-dashboard' && (
-          <AdminDashboardPage setCurrentView={handleNavigate} />
-        )}
+          {currentView === 'admin-dashboard' && (
+            <AdminDashboardPage setCurrentView={handleNavigate} />
+          )}
 
-        {currentView === 'admin-settings' && (
-          <AdminSettingsPage setCurrentView={handleNavigate} />
-        )}
+          {currentView === 'admin-settings' && (
+            <AdminSettingsPage setCurrentView={handleNavigate} />
+          )}
 
-        {currentView === 'stories-moderator' && (
-          <StoriesModeratorPage
-            setCurrentView={handleNavigate}
-            setSelectedStoryId={setSelectedStoryId}
-          />
-        )}
+          {currentView === 'stories-moderator' && (
+            <StoriesModeratorPage
+              setCurrentView={handleNavigate}
+              setSelectedStoryId={setSelectedStoryId}
+            />
+          )}
 
-        {currentView === 'about' && <AboutPage setCurrentView={handleNavigate} />}
-        {currentView === 'rules' && <RulesPage setCurrentView={handleNavigate} />}
-        {currentView === 'contact' && <ContactPage setCurrentView={handleNavigate} />}
-        {currentView === 'feedback' && <FeedbackPage setCurrentView={handleNavigate} />}
-        {currentView === 'updates' && <UpdatesPage setCurrentView={handleNavigate} />}
-        {currentView === 'help' && <HelpPage />}
+          {currentView === 'about' && <AboutPage setCurrentView={handleNavigate} />}
+          {currentView === 'rules' && <RulesPage setCurrentView={handleNavigate} />}
+          {currentView === 'contact' && <ContactPage setCurrentView={handleNavigate} />}
+          {currentView === 'feedback' && <FeedbackPage setCurrentView={handleNavigate} />}
+          {currentView === 'updates' && <UpdatesPage setCurrentView={handleNavigate} />}
+          {currentView === 'help' && <HelpPage />}
 
-        {currentView === 'publicProfile' && (
-          <PublicProfilePage
-            userId={viewingUserId}
-            setCurrentView={handleNavigate}
-            setViewingStoryId={setSelectedStoryId}
-            sourceView={profileSourceView}
-          />
-        )}
+          {currentView === 'publicProfile' && (
+            <PublicProfilePage
+              userId={viewingUserId}
+              setCurrentView={handleNavigate}
+              setViewingStoryId={setSelectedStoryId}
+              sourceView={profileSourceView}
+            />
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Global Auth Modal for Login, Registration & OTP */}

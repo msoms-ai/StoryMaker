@@ -309,7 +309,7 @@ export default function UserProfilePage({ setCurrentView }) {
             <div className={`${lang === 'ar' ? 'sm:mr-40' : 'sm:ml-40'} w-full sm:w-auto text-center sm:text-start flex-1 space-y-1`}>
               <div className={`flex flex-wrap items-center justify-center sm:justify-start gap-2`}>
                 <h2 className="text-3xl font-black text-slate-900 dark:text-white">
-                  {`${user.firstName} ${user.lastName}`.trim() || user.email}
+                  {(`${user.firstName || ''} ${user.lastName || ''}`.trim()) || user.email}
                 </h2>
                 <span className="px-3 py-1 rounded-full text-xs font-black bg-indigo-600 text-white shadow-sm">
                   {user.role}
@@ -317,7 +317,7 @@ export default function UserProfilePage({ setCurrentView }) {
               </div>
               <p className="text-sm font-medium text-slate-500">{user.email}</p>
               <p className="text-xs text-slate-400 font-mono">
-                {lang === 'ar' ? 'مجلد المستخدم:' : 'User Folder:'} <span className="font-bold text-amber-600 dark:text-amber-400">{user.userFolder}</span>
+                {lang === 'ar' ? 'مجلد المستخدم:' : 'User Folder:'} <span className="font-bold text-amber-600 dark:text-amber-400">{user.userFolder || user.email?.split('@')[0] || 'user'}</span>
               </p>
             </div>
 

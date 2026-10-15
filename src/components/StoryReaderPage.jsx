@@ -140,7 +140,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
         {/* Story Name & Author Visible in Middle Top */}
         <div className="flex flex-col items-center">
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-story text-center truncate max-w-md">
-            {story.name[lang] || story.name.en || story.name.ar}
+            {(typeof story.name === 'object' && story.name ? (story.name[lang] || story.name.ar || story.name.en) : story.name) || story.title || (lang === 'ar' ? 'قصة مصورة' : 'Story')}
           </h2>
           {story.authorName && (
             <div 

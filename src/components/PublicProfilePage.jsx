@@ -89,7 +89,40 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
   }
 
   const { firstName, lastName, displayName, avatarUrl, coverUrl, socialLinks, role, stories = [], isAnonymous } = profile;
-  const fullName = displayName || `${firstName || ''} ${lastName || ''}`.trim() || (isAnonymous ? (lang === 'ar' ? 'مؤلف مجهول' : 'Anonymous Author') : 'Author');
+
+  const getStoryTitle = (story) => {
+    if (!story) return lang === 'ar' ? 'قصة مصورة' : 'Story';
+    if (typeof story.name === 'object' && story.name !== null) {
+      return story.name[lang] || story.name.ar || story.name.en || '';
+    }
+    if (typeof story.name === 'string' && story.name.trim()) {
+      return story.name;
+    }
+    if (typeof story.title === 'object' && story.title !== null) {
+      return story.title[lang] || story.title.ar || story.title.en || '';
+    }
+    if (typeof story.title === 'string' && story.title.trim()) {
+      return story.title;
+    }
+    return lang === 'ar' ? 'قصة مصورة' : 'Story';
+  };
+
+  const resolveProfileName = () => {
+    if (isAnonymous) {
+      return lang === 'ar' ? 'مؤلف مجهول (كاتب زائر)' : 'Anonymous Author (Guest Creator)';
+    }
+    if (typeof displayName === 'object' && displayName !== null) {
+      return displayName[lang] || displayName.ar || displayName.en || '';
+    }
+    if (typeof displayName === 'string' && displayName.trim()) {
+      return displayName;
+    }
+    const fromNames = `${firstName || ''} ${lastName || ''}`.trim();
+    if (fromNames) return fromNames;
+    return lang === 'ar' ? 'مؤلف' : 'Author';
+  };
+
+  const fullName = resolveProfileName();
 
   return (
     <div className={`max-w-5xl mx-auto px-4 py-8 ${lang === 'ar' ? 'font-arabic' : ''} space-y-8 animate-fade-in`}>
@@ -206,7 +239,7 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
               >
                 <div className="aspect-[3/4] rounded-2xl overflow-hidden shadow-lg border-2 border-slate-100 dark:border-slate-800 group-hover:border-amber-500 transition-all group-hover:scale-105 group-hover:shadow-2xl relative">
                   {story.slides && story.slides[0] && story.slides[0].imageFile ? (
-                    <img src={story.slides[0].imageFile} alt="Cover" className="w-full h-full object-cover" />
+                    <img src={story.slides[0].imageFile} alt={getStoryTitle(story)} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-400">
                       <BookOpen className="w-12 h-12" />
@@ -215,7 +248,7 @@ export default function PublicProfilePage({ userId, setCurrentView, setViewingSt
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
                   <div className="absolute bottom-0 left-0 right-0 p-4">
                     <h3 className="text-white font-black text-sm line-clamp-2 leading-snug">
-                      {typeof story.title === 'object' ? story.title[lang] : story.title || story.name}
+                      {getStoryTitle(story)}
                     </h3>
                   </div>
                 </div>
