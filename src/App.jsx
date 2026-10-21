@@ -41,6 +41,11 @@ function MainRouter() {
         setSelectedStoryId(storyParam);
         setCurrentView('reader');
       }
+      const paymentParam = urlParams.get('payment');
+      const viewParam = urlParams.get('view');
+      if (paymentParam || viewParam === 'packages') {
+        setCurrentView('packages');
+      }
     } catch (e) {
       console.warn('URL parsing error:', e);
     }

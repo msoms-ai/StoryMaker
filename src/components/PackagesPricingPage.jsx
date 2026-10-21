@@ -1,7 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Check, Sparkles, CreditCard, ShieldCheck, Zap, BookOpen, Star, ArrowRight, ArrowLeft, RefreshCw, CheckCircle2, Lock } from 'lucide-react';
+import { 
+  Check, 
+  Sparkles, 
+  CreditCard, 
+  ShieldCheck, 
+  Zap, 
+  BookOpen, 
+  Star, 
+  ArrowRight, 
+  ArrowLeft, 
+  RefreshCw, 
+  CheckCircle2, 
+  Lock, 
+  ExternalLink,
+  AlertCircle,
+  AlertTriangle,
+  Smartphone
+} from 'lucide-react';
 
 const PACKAGES_CONFIG = [
   {
@@ -60,16 +77,84 @@ export default function PackagesPricingPage({ setCurrentView }) {
 
   const [selectedPkg, setSelectedPkg] = useState(null);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(null);
+  const [paymentError, setPaymentError] = useState('');
+  const [notification, setNotification] = useState(null);
+  const [gatewayConfig, setGatewayConfig] = useState({ isConfigured: false, isTestMode: true });
+  const [isVerifyingReturn, setIsVerifyingReturn] = useState(false);
+  const [showDemoForm, setShowDemoForm] = useState(false);
 
-  // Payment Form State
-  const [cardHolder, setCardHolder] = useState(user ? `${user.firstName} ${user.lastName}`.trim() : '');
+  // Simulated Demo Card Form State (Sandbox Fallback)
+  const [cardHolder, setCardHolder] = useState(user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '');
   const [cardNumber, setCardNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [cvv, setCvv] = useState('');
 
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(null);
-  const [paymentError, setPaymentError] = useState('');
+  // 1. Fetch Gateway Status (Ziina config & test mode)
+  useEffect(() => {
+    fetch('/api/packages')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.gateway) {
+          setGatewayConfig(data.gateway);
+        }
+      })
+      .catch(err => console.warn('[Packages] Gateway check error:', err));
+  }, []);
+
+  // 2. Handle return from Ziina Payment Gateway (?payment=success / ?payment=cancelled)
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentStatus = urlParams.get('payment');
+      const intentId = urlParams.get('payment_intent_id');
+
+      if (paymentStatus === 'success' && intentId) {
+        setIsVerifyingReturn(true);
+        fetch(`/api/packages/ziina/verify/${encodeURIComponent(intentId)}?lang=${lang}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.success) {
+              setPaymentSuccess({
+                storiesAdded: data.storiesAdded,
+                freeStoriesLeft: data.freeStoriesLeft,
+                transactionId: data.transactionId
+              });
+              if (data.user) {
+                updateProfile(data.user);
+              }
+              setCheckoutModalOpen(true);
+            } else {
+              setNotification({
+                type: 'error',
+                message: data.message || (lang === 'ar' ? 'لم تكتمل عملية الدفع أو تعذر التحقق منها.' : 'Payment was not completed or verification failed.')
+              });
+            }
+          })
+          .catch(err => {
+            setNotification({
+              type: 'error',
+              message: err.message
+            });
+          })
+          .finally(() => {
+            setIsVerifyingReturn(false);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          });
+      } else if (paymentStatus === 'cancelled') {
+        setNotification({
+          type: 'warning',
+          message: lang === 'ar'
+            ? 'تم إلغاء عملية الدفع. لم يتم خصم أي مبلغ من بطاقتك.'
+            : 'Payment was cancelled. No charges were made to your card.'
+        });
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch (e) {
+      console.warn('[Packages] Return URL parse error:', e);
+    }
+  }, [lang]);
 
   const handleOpenCheckout = (pkg) => {
     if (!user) {
@@ -79,10 +164,46 @@ export default function PackagesPricingPage({ setCurrentView }) {
     setSelectedPkg(pkg);
     setPaymentSuccess(null);
     setPaymentError('');
+    setShowDemoForm(false);
     setCheckoutModalOpen(true);
   };
 
-  const handleProcessPayment = async (e) => {
+  // Redirect to Ziina hosted checkout
+  const handlePayWithZiina = async () => {
+    if (!selectedPkg) return;
+    setIsProcessing(true);
+    setPaymentError('');
+
+    try {
+      const res = await fetch('/api/packages/ziina/create-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          packageId: selectedPkg.id,
+          origin: window.location.origin,
+          lang
+        })
+      });
+
+      const data = await res.json();
+      if (data.success && data.redirect_url) {
+        // Redirect to Ziina's hosted payment page
+        window.location.href = data.redirect_url;
+      } else {
+        setPaymentError(data.message || (lang === 'ar' ? 'تعذر إنشاء جلسة الدفع في Ziina' : 'Failed to initialize Ziina payment session'));
+        setIsProcessing(false);
+      }
+    } catch (err) {
+      setPaymentError(err.message || 'Network error');
+      setIsProcessing(false);
+    }
+  };
+
+  // Fallback simulated payment (Sandbox Demo)
+  const handleProcessSimulatedPayment = async (e) => {
     e.preventDefault();
     setPaymentError('');
     setIsProcessing(true);
@@ -96,10 +217,10 @@ export default function PackagesPricingPage({ setCurrentView }) {
         },
         body: JSON.stringify({
           packageId: selectedPkg.id,
-          cardHolder,
-          cardNumber,
-          expiryDate,
-          cvv,
+          cardHolder: cardHolder || 'Test User',
+          cardNumber: cardNumber || '4111222233334444',
+          expiryDate: expiryDate || '12/28',
+          cvv: cvv || '123',
           lang
         })
       });
@@ -135,6 +256,36 @@ export default function PackagesPricingPage({ setCurrentView }) {
   return (
     <div className={`max-w-6xl mx-auto px-4 py-12 ${lang === 'ar' ? 'font-arabic' : ''} space-y-12 animate-fade-in`}>
       
+      {/* Return Verification Overlay */}
+      {isVerifyingReturn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+          <div className="p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl text-center max-w-sm space-y-4 animate-scale-in">
+            <RefreshCw className="w-12 h-12 text-amber-500 animate-spin mx-auto" />
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">
+              {lang === 'ar' ? 'جاري التحقق من عملية الدفع...' : 'Verifying Ziina Payment...'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {lang === 'ar' ? 'يرجى الانتظار ثوانٍ معدودة لتأكيد العملية وإضافة الرصيد لحسابك.' : 'Please wait a moment while we confirm your payment and credit your stories.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Global Toast / Notification Banner */}
+      {notification && (
+        <div className={`p-4 rounded-2xl flex items-center justify-between shadow-md ${
+          notification.type === 'error'
+            ? 'bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400'
+            : 'bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400'
+        }`}>
+          <div className="flex items-center gap-3">
+            {notification.type === 'error' ? <AlertCircle className="w-5 h-5 shrink-0" /> : <AlertTriangle className="w-5 h-5 shrink-0" />}
+            <span className="text-xs sm:text-sm font-bold">{notification.message}</span>
+          </div>
+          <button onClick={() => setNotification(null)} className="text-xs font-black px-2 py-1 hover:opacity-70">✕</button>
+        </div>
+      )}
+
       {/* Marketing Header Banner */}
       <div className="text-center space-y-4 max-w-3xl mx-auto">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-black">
@@ -237,38 +388,58 @@ export default function PackagesPricingPage({ setCurrentView }) {
         })}
       </div>
 
-      {/* Trust & Guarantee Badges */}
-      <div className="grid sm:grid-cols-3 gap-6 pt-6 border-t border-slate-200 dark:border-slate-800 text-center max-w-4xl mx-auto">
-        <div className="space-y-1">
-          <ShieldCheck className="w-6 h-6 text-emerald-500 mx-auto" />
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            {lang === 'ar' ? 'دفع آمن ومحمي' : 'Safe & Encrypted Checkout'}
-          </h4>
-          <p className="text-xs text-slate-500">
-            {lang === 'ar' ? 'معاملات آمنة ومحمية وفق أعلى المعايير' : 'Simulated sandbox protected transactions'}
-          </p>
+      {/* Trust & Guarantee Badges with Payment Logos */}
+      <div className="p-6 rounded-3xl glass-panel border border-slate-200 dark:border-slate-800 max-w-4xl mx-auto space-y-6">
+        <div className="grid sm:grid-cols-3 gap-6 text-center">
+          <div className="space-y-1">
+            <ShieldCheck className="w-6 h-6 text-emerald-500 mx-auto" />
+            <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+              {lang === 'ar' ? 'بوابة Ziina المعتمدة' : 'Official Ziina Gateway'}
+            </h4>
+            <p className="text-xs text-slate-500">
+              {lang === 'ar' ? 'دفع آمن ومرخص من مصرف الإمارات المركزي' : 'Licensed by Central Bank of the UAE'}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <Zap className="w-6 h-6 text-amber-500 mx-auto" />
+            <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+              {lang === 'ar' ? 'تفعيل فوري للرصيد' : 'Instant Activation'}
+            </h4>
+            <p className="text-xs text-slate-500">
+              {lang === 'ar' ? 'تُضاف القصص فور إتمام العملية بدون انتظار' : 'Story credits are added immediately'}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <Star className="w-6 h-6 text-indigo-500 mx-auto" />
+            <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+              {lang === 'ar' ? 'جودة الذكاء الاصطناعي' : 'Gemini AI Quality'}
+            </h4>
+            <p className="text-xs text-slate-500">
+              {lang === 'ar' ? 'أحدث نماذج Google Gemini للرسوم والأصوات' : 'State-of-the-art visual and voice storytelling'}
+            </p>
+          </div>
         </div>
-        <div className="space-y-1">
-          <Zap className="w-6 h-6 text-amber-500 mx-auto" />
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            {lang === 'ar' ? 'تفعيل فوري للرصيد' : 'Instant Activation'}
-          </h4>
-          <p className="text-xs text-slate-500">
-            {lang === 'ar' ? 'تُضاف القصص فور إتمام العملية بدون انتظار' : 'Story credits are added immediately'}
-          </p>
-        </div>
-        <div className="space-y-1">
-          <Star className="w-6 h-6 text-indigo-500 mx-auto" />
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            {lang === 'ar' ? 'جودة الذكاء الاصطناعي' : 'Gemini AI Quality'}
-          </h4>
-          <p className="text-xs text-slate-500">
-            {lang === 'ar' ? 'أحدث نماذج Google Gemini للرسوم والأصوات' : 'State-of-the-art visual and voice storytelling'}
-          </p>
+
+        {/* Accepted Payment Methods Bar */}
+        <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs font-bold text-slate-500 dark:text-slate-400">
+          <span className="text-slate-400">{lang === 'ar' ? 'طرق الدفع المدعومة:' : 'Supported Payment Methods:'}</span>
+          <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+            <Smartphone className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
+            Apple Pay
+          </span>
+          <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-black text-slate-800 dark:text-slate-200">
+            Google Pay
+          </span>
+          <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-black text-slate-800 dark:text-slate-200">
+            Visa / Mastercard
+          </span>
+          <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-black text-slate-800 dark:text-slate-200">
+            Mada (مدى)
+          </span>
         </div>
       </div>
 
-      {/* CHECKOUT MODAL (Simulated Payment Flow) */}
+      {/* CHECKOUT MODAL (Ziina Hosted Payment Gateway) */}
       {checkoutModalOpen && selectedPkg && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
           <div className="relative w-full max-w-lg p-8 rounded-3xl glass-panel bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-6">
@@ -278,15 +449,15 @@ export default function PackagesPricingPage({ setCurrentView }) {
               <div>
                 <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-amber-500" />
-                  <span>{lang === 'ar' ? 'إتمام عملية الشراء' : 'Checkout & Order Summary'}</span>
+                  <span>{lang === 'ar' ? 'إتمام عملية الشراء' : 'Order Checkout'}</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {lang === 'ar' ? 'خطوة الدفع التجريبية الآمنة (Simulated Checkout)' : 'Secure Sandbox Payment Simulation'}
+                  {lang === 'ar' ? 'بوابة الدفع الآمنة المعتمدة (Ziina.com)' : 'Secure payment powered by Ziina.com'}
                 </p>
               </div>
               <button
                 onClick={() => setCheckoutModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg text-lg font-bold"
               >
                 ✕
               </button>
@@ -313,123 +484,213 @@ export default function PackagesPricingPage({ setCurrentView }) {
                 </div>
                 <div className="pt-4 flex gap-3 justify-center">
                   <button
-                    onClick={() => { setCheckoutModalOpen(false); setCurrentView('create'); }}
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 text-white font-black text-sm shadow-lg"
+                    onClick={() => { setCheckoutModalOpen(false); setCurrentView('wizard'); }}
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 text-white font-black text-sm shadow-lg hover:scale-105 transition-transform"
                   >
                     {lang === 'ar' ? 'ابدأ في تأليف قصة جديدة الآن 🚀' : 'Start Creating Stories Now 🚀'}
                   </button>
                 </div>
               </div>
             ) : (
-              /* Checkout Form */
-              <form onSubmit={handleProcessPayment} className="space-y-4">
+              /* Checkout Details & Action */
+              <div className="space-y-5">
                 
                 {/* Order Summary Box */}
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+                <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
                   <div>
-                    <h4 className="font-black text-slate-900 dark:text-white text-sm">
+                    <h4 className="font-black text-slate-900 dark:text-white text-base">
                       {selectedPkg.title[lang] || selectedPkg.title.en}
                     </h4>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 mt-0.5">
                       {lang === 'ar' ? `إضافة ${selectedPkg.storiesCount} قصة لحسابك` : `Add ${selectedPkg.storiesCount} stories to account`}
                     </p>
                   </div>
                   <div className={lang === 'ar' ? 'text-left' : 'text-right'}>
-                    <span className="text-2xl font-black text-amber-600">{selectedPkg.price}</span>
+                    <span className="text-3xl font-black text-amber-600">{selectedPkg.price}</span>
                     <span className="text-xs font-bold text-slate-500 mx-1">{selectedPkg.currency}</span>
                   </div>
                 </div>
 
+                {/* Gateway Status Alerts */}
+                {gatewayConfig.isTestMode && (
+                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs font-bold flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 shrink-0 text-indigo-500" />
+                    <span>
+                      {lang === 'ar'
+                        ? 'وضع التجربة مفعل (Sandbox): يمكنك إتمام الدفع بأي بيانات بطاقة دون أي خصم حقيقي.'
+                        : 'Test Mode Active (Sandbox): You can test using any card details without real charges.'}
+                    </span>
+                  </div>
+                )}
+
+                {!gatewayConfig.isConfigured && (
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs space-y-1">
+                    <div className="font-black flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>{lang === 'ar' ? 'مفتاح Ziina API غير مهيأ بعد' : 'Ziina API Key Not Configured'}</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed opacity-90">
+                      {lang === 'ar'
+                        ? 'يرجى وضع ZIINA_API_KEY في ملف .env أو إعدادات Plesk لتفعيل الدفع الحي، أو استخدم المحاكي التجريبي أدناه.'
+                        : 'Please configure ZIINA_API_KEY in your .env or Plesk settings to enable live checkout, or test using the simulation below.'}
+                    </p>
+                  </div>
+                )}
+
                 {paymentError && (
-                  <div className="p-3 rounded-xl bg-rose-500/10 text-rose-600 text-xs font-bold">
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 text-xs font-bold">
                     {paymentError}
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                    {lang === 'ar' ? 'اسم حامل البطاقة' : 'Cardholder Name'}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cardHolder}
-                    onChange={(e) => setCardHolder(e.target.value)}
-                    placeholder="Ahmed Al-Mansoor"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                    {lang === 'ar' ? 'رقم بطاقة الدفع' : 'Card Number'}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                    placeholder="4111 2222 3333 4444"
-                    maxLength={19}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                      {lang === 'ar' ? 'تاريخ الانتهاء' : 'Expiry Date'}
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={expiryDate}
-                      onChange={(e) => setExpiryDate(formatExpiry(e.target.value))}
-                      placeholder="MM/YY"
-                      maxLength={5}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
-                    />
+                {/* Supported Payment Logos in Modal */}
+                <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300">
+                    <Lock className="w-4 h-4 text-emerald-500" />
+                    <span>{lang === 'ar' ? 'وسائل الدفع في Ziina:' : 'Payment Options:'}</span>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                      {lang === 'ar' ? 'رمز الأمان (CVV)' : 'CVV'}
-                    </label>
-                    <input
-                      type="password"
-                      required
-                      value={cvv}
-                      onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').substring(0, 4))}
-                      placeholder="•••"
-                      maxLength={4}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
-                    />
+                  <div className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-200">
+                    <span>Apple Pay</span>
+                    <span>•</span>
+                    <span>Google Pay</span>
+                    <span>•</span>
+                    <span>Cards</span>
                   </div>
                 </div>
 
-                <div className="pt-4">
-                  <button
-                    type="submit"
-                    disabled={isProcessing}
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-indigo-600 hover:from-emerald-600 hover:to-indigo-700 text-white font-black text-sm shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>{lang === 'ar' ? 'جاري معالجة الدفع وإرسال الإشعار...' : 'Processing Payment...'}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="w-4 h-4" />
-                        <span>
-                          {lang === 'ar'
-                            ? `تأكيد الدفع (${selectedPkg.price} AED) وإضافة الرصيد`
-                            : `Confirm Payment (${selectedPkg.price} AED) & Add Credits`}
-                        </span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+                {/* Primary Button: Proceed to Ziina Hosted Checkout */}
+                {!showDemoForm && (
+                  <div className="space-y-3 pt-2">
+                    <button
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={handlePayWithZiina}
+                      className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-black text-base shadow-xl shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2 transition-all hover:scale-[1.01]"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                          <span>{lang === 'ar' ? 'جاري الانتقال لبوابة الدفع Ziina...' : 'Connecting to Ziina Checkout...'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-5 h-5" />
+                          <span>
+                            {lang === 'ar'
+                              ? `المتابعة إلى الدفع الآمن عبر Ziina (${selectedPkg.price} AED)`
+                              : `Proceed to Pay with Ziina (${selectedPkg.price} AED)`}
+                          </span>
+                          <ExternalLink className="w-4 h-4 opacity-80" />
+                        </>
+                      )}
+                    </button>
+
+                    <div className="text-center pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowDemoForm(true)}
+                        className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 underline"
+                      >
+                        {lang === 'ar' ? 'أو تجربة المحاكاة المباشرة (Sandbox Demo) ↗' : 'Or test instant Demo Simulation (Sandbox) ↗'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Fallback Simulation Card Form */}
+                {showDemoForm && (
+                  <form onSubmit={handleProcessSimulatedPayment} className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500 pb-1">
+                      <span>{lang === 'ar' ? 'محاكاة الدفع التجريبية' : 'Sandbox Demo Simulator'}</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowDemoForm(false)}
+                        className="text-amber-600 dark:text-amber-400 hover:underline"
+                      >
+                        {lang === 'ar' ? '← العودة إلى Ziina' : '← Back to Ziina'}
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                        {lang === 'ar' ? 'اسم حامل البطاقة' : 'Cardholder Name'}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={cardHolder}
+                        onChange={(e) => setCardHolder(e.target.value)}
+                        placeholder="Ahmed Al-Mansoor"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                        {lang === 'ar' ? 'رقم بطاقة الدفع' : 'Card Number'}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                        placeholder="4111 2222 3333 4444"
+                        maxLength={19}
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          {lang === 'ar' ? 'تاريخ الانتهاء' : 'Expiry Date'}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={expiryDate}
+                          onChange={(e) => setExpiryDate(formatExpiry(e.target.value))}
+                          placeholder="MM/YY"
+                          maxLength={5}
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          {lang === 'ar' ? 'رمز الأمان (CVV)' : 'CVV'}
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          value={cvv}
+                          onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                          placeholder="•••"
+                          maxLength={4}
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={isProcessing}
+                        className="w-full py-3 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-black text-xs hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {isProcessing ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>{lang === 'ar' ? 'جاري تأكيد المحاكاة...' : 'Processing Demo...'}</span>
+                          </>
+                        ) : (
+                          <span>{lang === 'ar' ? 'تأكيد الدفع التجريبي وإضافة الرصيد' : 'Confirm Demo Payment & Add Credits'}</span>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+              </div>
             )}
 
           </div>

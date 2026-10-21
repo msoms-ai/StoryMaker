@@ -755,7 +755,7 @@ app.post('/api/user/request-story-maker', authenticateUser, teacherIdUpload.sing
 });
 
 // -------------------------------------------------------------
-// 3. SUBSCRIPTION PACKAGES & SIMULATED PAYMENT CHECKOUT
+// 3. SUBSCRIPTION PACKAGES & ZIINA PAYMENT GATEWAY
 // -------------------------------------------------------------
 
 const PACKAGES = [
@@ -764,12 +764,278 @@ const PACKAGES = [
   { id: 'pack_100', storiesCount: 100, price: 99, currency: 'AED', name: { ar: 'باقة 100 قصة (باقة المدارس)', en: '100 Stories Package (Schools Tier)' } }
 ];
 
-// GET /api/packages
+const ZIINA_API_BASE_URL = 'https://api-v2.ziina.com/api';
+
+/**
+ * Determine dynamic base URL for payment callback redirects
+ */
+function getPaymentBaseUrl(req, clientOrigin) {
+  if (clientOrigin && (clientOrigin.startsWith('http://') || clientOrigin.startsWith('https://'))) {
+    return clientOrigin.replace(/\/$/, '');
+  }
+  if (process.env.SITE_URL) {
+    return process.env.SITE_URL.replace(/\/$/, '');
+  }
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+  return `${proto}://${host}`.replace(/\/$/, '');
+}
+
+/**
+ * Shared idempotent function to fulfill a verified Ziina payment
+ */
+async function fulfillZiinaPayment(intentId, intentDetails = null, preferredLang = 'ar') {
+  const db = readDB();
+  const txn = (db.transactions || []).find(t => t.id === intentId || t.paymentIntentId === intentId);
+
+  // If already marked completed, return current state
+  if (txn && txn.status === 'completed') {
+    const user = db.users.find(u => u.id === txn.userId);
+    return {
+      success: true,
+      alreadyCompleted: true,
+      status: 'completed',
+      storiesAdded: txn.storiesCount,
+      freeStoriesLeft: user ? user.freeStoriesLeft : 0,
+      transactionId: txn.id,
+      user: user ? sanitizeUser(user) : null
+    };
+  }
+
+  // If intent details weren't supplied, query Ziina directly
+  let paymentData = intentDetails;
+  if (!paymentData) {
+    if (!process.env.ZIINA_API_KEY) {
+      throw new Error('Ziina API key is not configured');
+    }
+    const res = await fetch(`${ZIINA_API_BASE_URL}/payment_intent/${encodeURIComponent(intentId)}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${process.env.ZIINA_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Ziina] Failed to fetch payment intent ${intentId}:`, res.status, errText);
+      throw new Error(`Failed to fetch payment status from Ziina (${res.status})`);
+    }
+    paymentData = await res.json();
+  }
+
+  if (paymentData.status !== 'completed') {
+    return {
+      success: false,
+      status: paymentData.status,
+      message: `Payment has not been completed. Current status: ${paymentData.status}`
+    };
+  }
+
+  if (!txn) {
+    throw new Error('Transaction record not found for this payment intent');
+  }
+
+  const user = db.users.find(u => u.id === txn.userId);
+  if (!user) {
+    throw new Error('User associated with this transaction was not found');
+  }
+
+  // Credit story quota
+  user.freeStoriesLeft = (user.freeStoriesLeft || 0) + txn.storiesCount;
+
+  // Update transaction record
+  txn.status = 'completed';
+  txn.completedAt = new Date().toISOString();
+  if (paymentData.card_details?.card_last_four) {
+    txn.cardLast4 = paymentData.card_details.card_last_four;
+  }
+  if (paymentData.card_details?.card_brand) {
+    txn.cardBrand = paymentData.card_details.card_brand;
+  }
+
+  writeDB(db);
+
+  // Send confirmation receipt email
+  await sendPackagePurchaseEmail({
+    toEmail: user.email,
+    packageName: txn.packageName,
+    storiesAdded: txn.storiesCount,
+    price: txn.amount,
+    transactionId: txn.id,
+    lang: preferredLang
+  });
+
+  console.log(`[Ziina] Payment completed for user ${user.email}. Added ${txn.storiesCount} stories. Balance: ${user.freeStoriesLeft}`);
+
+  return {
+    success: true,
+    status: 'completed',
+    storiesAdded: txn.storiesCount,
+    freeStoriesLeft: user.freeStoriesLeft,
+    transactionId: txn.id,
+    user: sanitizeUser(user)
+  };
+}
+
+// GET /api/packages - List available packages & payment gateway info
 app.get('/api/packages', (req, res) => {
-  res.json({ success: true, packages: PACKAGES });
+  const isTestMode = process.env.ZIINA_TEST_MODE !== 'false';
+  res.json({
+    success: true,
+    packages: PACKAGES,
+    gateway: {
+      provider: 'ziina',
+      isConfigured: !!process.env.ZIINA_API_KEY,
+      isTestMode
+    }
+  });
 });
 
-// POST /api/packages/checkout - Simulated payment & credit allocation
+// POST /api/packages/ziina/create-intent - Initialize Ziina Payment Intent
+app.post('/api/packages/ziina/create-intent', authenticateUser, async (req, res) => {
+  try {
+    const { packageId, origin, lang = 'ar' } = req.body;
+
+    const pkg = PACKAGES.find(p => p.id === packageId);
+    if (!pkg) {
+      return res.status(404).json({ success: false, message: 'Package not found' });
+    }
+
+    if (!process.env.ZIINA_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        code: 'ZIINA_KEY_MISSING',
+        message: 'Ziina API Key is not configured yet. Please set ZIINA_API_KEY in server environment variables.'
+      });
+    }
+
+    const db = readDB();
+    const user = db.users.find(u => u.id === req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Amount in fils (1 AED = 100 fils, min 200 fils)
+    const amountInFils = Math.round(pkg.price * 100);
+    const isTestMode = process.env.ZIINA_TEST_MODE !== 'false';
+
+    const baseUrl = getPaymentBaseUrl(req, origin);
+    const successUrl = `${baseUrl}/?payment=success&payment_intent_id={PAYMENT_INTENT_ID}&view=packages`;
+    const cancelUrl = `${baseUrl}/?payment=cancelled&view=packages`;
+
+    const packageNameStr = pkg.name[lang] || pkg.name.ar || 'Story Package';
+    const intentPayload = {
+      amount: amountInFils,
+      currency_code: pkg.currency || 'AED',
+      message: `${packageNameStr} (${pkg.storiesCount} Stories) - Qisas Platform`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      test: isTestMode
+    };
+
+    console.log(`[Ziina] Creating Payment Intent for user ${user.email}:`, {
+      packageId: pkg.id,
+      amountInFils,
+      test: isTestMode,
+      successUrl
+    });
+
+    const ziinaRes = await fetch(`${ZIINA_API_BASE_URL}/payment_intent`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.ZIINA_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(intentPayload)
+    });
+
+    if (!ziinaRes.ok) {
+      const errBody = await ziinaRes.text();
+      console.error('[Ziina] Error creating payment intent:', ziinaRes.status, errBody);
+      let errMsg = `Ziina payment creation failed (${ziinaRes.status})`;
+      try {
+        const errJson = JSON.parse(errBody);
+        errMsg = errJson.message || errJson.error || errMsg;
+      } catch (e) {}
+      return res.status(ziinaRes.status).json({ success: false, message: errMsg });
+    }
+
+    const intentData = await ziinaRes.json();
+    console.log('[Ziina] Payment Intent created successfully:', intentData.id);
+
+    // Save pending transaction in database
+    const transaction = {
+      id: intentData.id,
+      paymentIntentId: intentData.id,
+      userId: user.id,
+      userEmail: user.email,
+      packageId: pkg.id,
+      packageName: packageNameStr,
+      storiesCount: pkg.storiesCount,
+      amount: pkg.price,
+      currency: pkg.currency || 'AED',
+      status: intentData.status || 'requires_payment_instrument',
+      isTest: isTestMode,
+      redirectUrl: intentData.redirect_url,
+      createdAt: new Date().toISOString()
+    };
+
+    if (!db.transactions) db.transactions = [];
+    db.transactions.unshift(transaction);
+    writeDB(db);
+
+    res.json({
+      success: true,
+      payment_intent_id: intentData.id,
+      redirect_url: intentData.redirect_url,
+      status: intentData.status
+    });
+  } catch (error) {
+    console.error('[Ziina Create Intent] Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/packages/ziina/verify/:intentId - Verify payment intent status & credit stories
+app.get('/api/packages/ziina/verify/:intentId', async (req, res) => {
+  try {
+    const { intentId } = req.params;
+    const { lang = 'ar' } = req.query;
+
+    if (!intentId) {
+      return res.status(400).json({ success: false, message: 'Intent ID is required' });
+    }
+
+    const result = await fulfillZiinaPayment(intentId, null, lang);
+    return res.json(result);
+  } catch (error) {
+    console.error('[Ziina Verify] Error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/packages/ziina/webhook - Handle asynchronous webhook events from Ziina
+app.post('/api/packages/ziina/webhook', express.json(), async (req, res) => {
+  try {
+    const payload = req.body;
+    console.log('[Ziina Webhook] Received webhook payload:', payload?.event, payload?.data?.id);
+
+    const intentId = payload?.data?.id;
+    const status = payload?.data?.status;
+
+    if (intentId && status === 'completed') {
+      await fulfillZiinaPayment(intentId, payload.data, 'ar');
+    }
+
+    res.status(200).json({ received: true });
+  } catch (err) {
+    console.error('[Ziina Webhook] Handler error:', err.message);
+    // Return 200 so Ziina does not repeatedly retry on client validation errors
+    res.status(200).json({ received: true, error: err.message });
+  }
+});
+
+// POST /api/packages/checkout - Simulated demo payment & credit allocation (sandbox fallback)
 app.post('/api/packages/checkout', authenticateUser, async (req, res) => {
   const { packageId, cardHolder, cardNumber, expiryDate, cvv, lang = 'ar' } = req.body;
 
