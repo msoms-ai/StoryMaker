@@ -7,7 +7,7 @@ import { getCategoryIconComponent } from '../categoryIcons';
 
 export default function StoryGenerationWizard({ setCurrentView, setSelectedStoryId }) {
   const { lang, t } = useLanguage();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, updateProfile } = useAuth();
   
   const [step, setStep] = useState(() => parseInt(sessionStorage.getItem('wizard_step')) || 0);
   const [wizardMode, setWizardMode] = useState(() => sessionStorage.getItem('wizard_mode') || '');
@@ -349,18 +349,31 @@ export default function StoryGenerationWizard({ setCurrentView, setSelectedStory
     const authorDisplayName = getAuthorDisplayName();
 
     if (action === 'approve') {
-      await fetch(`/api/stories/${draftStory.id}/status`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ 
-          status: 'published',
-          userId: user?.id || null,
-          authorName: authorDisplayName
-        })
-      });
+      const isAi = wizardMode === 'make' || sessionStorage.getItem('wizard_wasAiMade') === 'true' || draftStory.isAiGenerated === true;
+      try {
+        const res = await fetch(`/api/stories/${draftStory.id}/status`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ 
+            status: 'published',
+            userId: user?.id || null,
+            authorName: authorDisplayName,
+            isAiGenerated: isAi
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data && data.user && updateProfile) {
+          updateProfile(data.user);
+        } else if (refreshUser) {
+          refreshUser();
+        }
+      } catch (e) {
+        console.warn('Story status update error:', e);
+      }
+      sessionStorage.removeItem('wizard_wasAiMade');
       setDraftStory(null);
       setPlanData(null);
       setOutcomeStatus('saved');

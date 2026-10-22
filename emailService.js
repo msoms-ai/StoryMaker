@@ -35,9 +35,28 @@ export async function sendOtpEmail({ toEmail, otpCode, lang = 'ar', purpose = 's
   
   const fromAddress = `"${fromTitle}" <${process.env.SMTP_FROM_EMAIL || 'qisas.admin@msoms.ai'}>`;
 
-  const subject = lang === 'ar'
+  let badgeTitle = lang === 'ar' ? 'تفعيل الحساب الجديد' : 'Account Activation';
+  let introText = lang === 'ar'
+    ? 'مرحباً بك في منصة قصص! يرجى استخدام رمز التحقق التالي لإتمام تفعيل حسابك والبدء في إنشاء وقراءة أروع القصص التفاعلية:'
+    : 'Welcome to Qisas Platform! Please use the following 4-digit verification code to activate your account and start crafting stories:';
+  let subject = lang === 'ar'
     ? `رمز التحقق الخاص بك في منصة قصص: ${otpCode}`
     : `Your Qisas Platform Verification Code: ${otpCode}`;
+
+  if (purpose === 'password_reset') {
+    badgeTitle = lang === 'ar' ? 'استعادة كلمة المرور' : 'Password Reset';
+    introText = lang === 'ar'
+      ? 'لقد تلقينا طلباً لاستعادة كلمة المرور لحسابك في منصة قصص. يرجى استخدام رمز التحقق التالي لتعيين كلمة مرور جديدة:'
+      : 'We received a request to reset your password on Qisas Platform. Please use the following 4-digit code to set a new password:';
+    subject = lang === 'ar'
+      ? `رمز استعادة كلمة المرور في منصة قصص: ${otpCode}`
+      : `Your Password Reset Code: ${otpCode}`;
+  } else if (purpose === 'email_change') {
+    badgeTitle = lang === 'ar' ? 'تأكيد البريد الإلكتروني الجديد' : 'Confirm New Email';
+    introText = lang === 'ar'
+      ? 'يرجى استخدام رمز التحقق التالي لتأكيد بريدك الإلكتروني الجديد في منصة قصص:'
+      : 'Please use the following 4-digit code to confirm your new email address:';
+  }
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -60,19 +79,17 @@ export async function sendOtpEmail({ toEmail, otpCode, lang = 'ar', purpose = 's
       <div class="container">
         <div class="logo-box">
           <h1 class="logo-title">${lang === 'ar' ? 'منصة قصص للذكاء الاصطناعي' : 'Qisas Story Platform'}</h1>
-          <span class="badge">${purpose === 'email_change' ? (lang === 'ar' ? 'تأكيد البريد الإلكتروني الجديد' : 'Confirm New Email') : (lang === 'ar' ? 'تفعيل الحساب الجديد' : 'Account Activation')}</span>
+          <span class="badge">${badgeTitle}</span>
         </div>
         
         <p style="font-size: 15px; line-height: 1.6; text-align: ${lang === 'ar' ? 'right' : 'left'};">
-          ${lang === 'ar'
-            ? 'مرحباً بك في منصة قصص! يرجى استخدام رمز التحقق التالي لإتمام تفعيل حسابك والبدء في إنشاء وقراءة أروع القصص التفاعلية:'
-            : 'Welcome to Qisas Platform! Please use the following 4-digit verification code to activate your account and start crafting stories:'}
+          ${introText}
         </p>
 
         <div class="otp-box">
           <div class="otp-code">${otpCode}</div>
           <div class="timer-notice">
-            ${lang === 'ar' ? '⏳ هذا الرمز صالح لمدة 5 دقائق فقط' : '⏳ This code expires in 5 minutes'}
+            ${lang === 'ar' ? '⏳ هذا الرمز صالح لمدة 10 دقائق فقط' : '⏳ This code expires in 10 minutes'}
           </div>
         </div>
 

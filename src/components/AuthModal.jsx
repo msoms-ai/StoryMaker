@@ -1,10 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { X, Lock, Mail, User, ShieldCheck, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, RefreshCw, KeyRound, Sparkles } from 'lucide-react';
+import { 
+  X, 
+  Lock, 
+  Mail, 
+  User, 
+  ShieldCheck, 
+  ArrowRight, 
+  ArrowLeft, 
+  AlertCircle, 
+  CheckCircle2, 
+  RefreshCw, 
+  KeyRound, 
+  Sparkles 
+} from 'lucide-react';
 
 export default function AuthModal() {
-  const { authModalOpen, authModalTab, setAuthModalTab, closeAuthModal, login, signup, verifyOtp, resendOtp, otpEmail, otpNotice } = useAuth();
+  const { 
+    authModalOpen, 
+    authModalTab, 
+    setAuthModalTab, 
+    closeAuthModal, 
+    login, 
+    signup, 
+    verifyOtp, 
+    resendOtp, 
+    otpEmail, 
+    otpNotice,
+    forgotPassword,
+    resetPassword
+  } = useAuth();
+  
   const { lang, dir, t } = useLanguage();
 
   const [email, setEmail] = useState('');
@@ -13,6 +40,12 @@ export default function AuthModal() {
   const [lastName, setLastName] = useState('');
   const [otpCode, setOtpCode] = useState('');
   
+  // Forgot / Reset Password States
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetOtpCode, setResetOtpCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [forgotSuccessNotice, setForgotSuccessNotice] = useState('');
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -24,6 +57,9 @@ export default function AuthModal() {
     if (authModalTab === 'otp') {
       setOtpSecondsLeft(300);
       setOtpCode('');
+    }
+    if (authModalTab === 'forgot-password') {
+      setForgotEmail(email);
     }
     setError('');
   }, [authModalTab]);
@@ -46,11 +82,17 @@ export default function AuthModal() {
 
   if (!authModalOpen) return null;
 
-  // Password Strength Validations
+  // Password Strength Validations (Signup)
   const hasMinLength = password.length >= 8;
   const hasNumber = /[0-9]/.test(password);
   const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>_\-=+]/.test(password);
   const isPasswordValid = hasMinLength && hasNumber && hasSpecialChar;
+
+  // Password Strength Validations (New Password for Reset)
+  const hasNewMinLength = newPassword.length >= 8;
+  const hasNewNumber = /[0-9]/.test(newPassword);
+  const hasNewSpecialChar = /[!@#$%^&*(),.?":{}|<>_\-=+]/.test(newPassword);
+  const isNewPasswordValid = hasNewMinLength && hasNewNumber && hasNewSpecialChar;
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -101,6 +143,51 @@ export default function AuthModal() {
     await resendOtp(lang);
   };
 
+  // Forgot Password Submit (Anti-User-Enumeration Compliant)
+  const handleForgotPasswordSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!forgotEmail || !forgotEmail.trim()) {
+      setError(lang === 'ar' ? 'يرجى إدخال البريد الإلكتروني' : 'Please enter your email address');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    const res = await forgotPassword(forgotEmail.trim(), lang);
+    setLoading(false);
+    
+    // Always show generic message and move to reset step
+    setForgotSuccessNotice(res.message || (lang === 'ar' 
+      ? 'إذا كان هذا البريد مسجلاً في منصة قصص، فقد تم إرسال رمز التحقق إليه.' 
+      : 'If this email is registered with Qisas Platform, a verification code has been sent.'));
+    setResendCooldown(60);
+    setAuthModalTab('reset-password');
+  };
+
+  // Reset Password Submit
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetOtpCode || resetOtpCode.trim().length !== 4) {
+      setError(lang === 'ar' ? 'يرجى إدخال رمز التحقق المكون من 4 أرقام' : 'Please enter the 4-digit verification code');
+      return;
+    }
+    if (!isNewPasswordValid) {
+      setError(lang === 'ar' ? 'يرجى استيفاء شروط كلمة المرور الجديدة القوية' : 'Please satisfy all new password requirements');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    const res = await resetPassword({
+      email: forgotEmail.trim(),
+      otp: resetOtpCode.trim(),
+      newPassword,
+      lang
+    });
+    setLoading(false);
+    if (!res.success) {
+      setError(res.message);
+    }
+  };
+
   const formatCountdown = (secs) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -122,22 +209,34 @@ export default function AuthModal() {
         {/* Modal Header */}
         <div className="text-center mb-6">
           <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
-            <Sparkles className="w-7 h-7" />
+            {authModalTab === 'forgot-password' || authModalTab === 'reset-password' ? (
+              <KeyRound className="w-7 h-7" />
+            ) : (
+              <Sparkles className="w-7 h-7" />
+            )}
           </div>
           <h2 className="text-2xl font-black text-slate-900 dark:text-white">
             {authModalTab === 'otp'
               ? (lang === 'ar' ? 'تأكيد الحساب برمز OTP' : 'Verify Email with OTP')
+              : authModalTab === 'forgot-password'
+              ? (lang === 'ar' ? 'استعادة كلمة المرور' : 'Forgot Password')
+              : authModalTab === 'reset-password'
+              ? (lang === 'ar' ? 'تعيين كلمة المرور الجديدة' : 'Reset Password')
               : (lang === 'ar' ? 'مرحباً بك في منصة قصص' : 'Welcome to Qisas Platform')}
           </h2>
           <p className="text-xs font-bold text-slate-500 mt-1">
             {authModalTab === 'otp'
               ? (lang === 'ar' ? `تم إرسال رمز التحقق إلى ${otpEmail}` : `Verification code sent to ${otpEmail}`)
+              : authModalTab === 'forgot-password'
+              ? (lang === 'ar' ? 'أدخل بريدك الإلكتروني المسجل لاستلام رمز التحقق' : 'Enter your registered email to receive a reset code')
+              : authModalTab === 'reset-password'
+              ? (lang === 'ar' ? 'أدخل رمز التحقق (4 أرقام) وكلمة المرور الجديدة' : 'Enter the 4-digit code and your new password')
               : (lang === 'ar' ? 'بوابتك الإبداعية لتأليف ورواية القصص' : 'Your gateway to interactive story creation')}
           </p>
         </div>
 
-        {/* Tabs Switcher (Login / Signup) */}
-        {authModalTab !== 'otp' && (
+        {/* Tabs Switcher (Only visible for Login / Signup) */}
+        {(authModalTab === 'login' || authModalTab === 'signup') && (
           <div className="grid grid-cols-2 p-1 mb-6 rounded-2xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">
             <button
               onClick={() => { setAuthModalTab('login'); setError(''); }}
@@ -207,6 +306,21 @@ export default function AuthModal() {
               </div>
             </div>
 
+            {/* Forgot Password Link */}
+            <div className="flex items-center justify-end -mt-1 mb-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotEmail(email);
+                  setAuthModalTab('forgot-password');
+                  setError('');
+                }}
+                className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline"
+              >
+                {lang === 'ar' ? 'نسيت كلمة المرور؟' : 'Forgot Password?'}
+              </button>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -250,7 +364,7 @@ export default function AuthModal() {
                   required
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder={lang === 'ar' ? 'الهاشمي' : 'Doe'}
+                  placeholder={lang === 'ar' ? 'المنصور' : 'Doe'}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
                 />
               </div>
@@ -260,43 +374,49 @@ export default function AuthModal() {
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
                 {lang === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}
               </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@domain.com"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
-              />
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@domain.com"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+                />
+                <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+              </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
                 {lang === 'ar' ? 'كلمة المرور' : 'Password'}
               </label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
-              />
+              <div className="relative">
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+                />
+                <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+              </div>
+            </div>
 
-              {/* Password Requirements Checklist */}
-              <div className="mt-2.5 space-y-1 text-xs">
-                <div className={`flex items-center gap-1.5 ${hasMinLength ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{lang === 'ar' ? '8 أحرف على الأقل' : 'At least 8 characters'}</span>
-                </div>
-                <div className={`flex items-center gap-1.5 ${hasNumber ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{lang === 'ar' ? 'يحتوي على أرقام (0-9)' : 'Contains numbers'}</span>
-                </div>
-                <div className={`flex items-center gap-1.5 ${hasSpecialChar ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{lang === 'ar' ? 'يحتوي على رموز خاصة (!@#$%...)' : 'Contains special characters'}</span>
-                </div>
+            {/* Password Validation Requirements */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1 text-xs">
+              <div className={`flex items-center gap-1.5 ${hasMinLength ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? '8 خانات على الأقل' : 'At least 8 characters'}</span>
+              </div>
+              <div className={`flex items-center gap-1.5 ${hasNumber ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'يحتوي على رقم واحد على الأقل' : 'At least one number'}</span>
+              </div>
+              <div className={`flex items-center gap-1.5 ${hasSpecialChar ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'يحتوي على رمز خاص واحد على الأقل (!@#$...)' : 'At least one special character'}</span>
               </div>
             </div>
 
@@ -317,7 +437,162 @@ export default function AuthModal() {
           </form>
         )}
 
-        {/* TAB 3: 4-DIGIT OTP VERIFICATION SCREEN */}
+        {/* TAB 3: FORGOT PASSWORD REQUEST FORM */}
+        {authModalTab === 'forgot-password' && (
+          <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">
+                {lang === 'ar' ? 'البريد الإلكتروني المسجل' : 'Registered Email Address'}
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="name@domain.com"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+                />
+                <Mail className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-black text-sm transition-all shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <span>{lang === 'ar' ? 'إرسال رمز التحقق' : 'Send Reset Code'}</span>
+                  {lang === 'ar' ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+                </>
+              )}
+            </button>
+
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => { setAuthModalTab('login'); setError(''); }}
+                className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:underline"
+              >
+                {lang === 'ar' ? '← العودة لتسجيل الدخول' : '← Back to Sign In'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* TAB 4: RESET PASSWORD WITH OTP */}
+        {authModalTab === 'reset-password' && (
+          <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+            {/* Generic Safe Notice (Anti-Enumeration Compliant) */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <span className="leading-relaxed">
+                {forgotSuccessNotice || (lang === 'ar'
+                  ? 'إذا كان هذا البريد مسجلاً في منصة قصص، فقد تم إرسال رمز التحقق إليه.'
+                  : 'If this email is registered with Qisas Platform, a verification code has been sent.')}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                {lang === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}
+              </label>
+              <input
+                type="email"
+                required
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                {lang === 'ar' ? 'رمز التحقق (4 أرقام)' : '4-Digit Verification Code'}
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={4}
+                value={resetOtpCode}
+                onChange={(e) => setResetOtpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+                placeholder="••••"
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center font-mono text-xl font-black tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                {lang === 'ar' ? 'كلمة المرور الجديدة' : 'New Password'}
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white"
+                />
+                <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+              </div>
+            </div>
+
+            {/* Password Validation Checklist */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1 text-xs">
+              <div className={`flex items-center gap-1.5 ${hasNewMinLength ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? '8 خانات على الأقل' : 'At least 8 characters'}</span>
+              </div>
+              <div className={`flex items-center gap-1.5 ${hasNewNumber ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'يحتوي على رقم واحد على الأقل' : 'At least one number'}</span>
+              </div>
+              <div className={`flex items-center gap-1.5 ${hasNewSpecialChar ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'يحتوي على رمز خاص واحد على الأقل (!@#$...)' : 'At least one special character'}</span>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !isNewPasswordValid || resetOtpCode.length !== 4}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-black text-sm transition-all shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <span>{lang === 'ar' ? 'تحديث كلمة المرور والدخول' : 'Reset Password & Sign In'}</span>
+              )}
+            </button>
+
+            <div className="flex items-center justify-between text-xs pt-2">
+              <button
+                type="button"
+                onClick={() => { setAuthModalTab('login'); setError(''); }}
+                className="font-bold text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:underline"
+              >
+                {lang === 'ar' ? '← العودة لتسجيل الدخول' : '← Back to Sign In'}
+              </button>
+              <button
+                type="button"
+                disabled={resendCooldown > 0}
+                onClick={handleForgotPasswordSubmit}
+                className="font-bold text-amber-600 dark:text-amber-400 disabled:opacity-50 hover:underline"
+              >
+                {resendCooldown > 0
+                  ? (lang === 'ar' ? `إعادة الإرسال بعد (${resendCooldown}s)` : `Resend in (${resendCooldown}s)`)
+                  : (lang === 'ar' ? 'إعادة إرسال الرمز' : 'Resend Code')}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* TAB 5: 4-DIGIT SIGNUP OTP VERIFICATION SCREEN */}
         {authModalTab === 'otp' && (
           <form onSubmit={handleOtpSubmit} className="space-y-6 text-center">
             

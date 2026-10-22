@@ -201,7 +201,7 @@ function writeDB(data) {
 
 function sanitizeUser(user) {
   if (!user) return null;
-  const { passwordHash, otpCode, otpExpiresAt, pendingEmailOtp, pendingOtpExpiresAt, ...safe } = user;
+  const { passwordHash, otpCode, otpExpiresAt, pendingEmailOtp, pendingOtpExpiresAt, resetOtp, resetOtpExpiresAt, ...safe } = user;
   return safe;
 }
 
@@ -427,6 +427,102 @@ app.post('/api/auth/login', (req, res) => {
   res.json({
     success: true,
     message: 'Login successful',
+    token,
+    user: sanitizeUser(user)
+  });
+});
+
+// POST /api/auth/forgot-password (Anti-user-enumeration compliant)
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email, lang = 'ar' } = req.body;
+
+  const genericSuccessMessage = lang === 'ar'
+    ? 'إذا كان هذا البريد مسجلاً في منصة قصص، فقد تم إرسال رمز التحقق إليه.'
+    : 'If this email is registered with Qisas Platform, a verification code has been sent.';
+
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'ar' ? 'يرجى إدخال بريد إلكتروني صحيح' : 'Please provide a valid email address'
+    });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const db = readDB();
+  const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
+
+  if (user && user.status !== 'suspended') {
+    const resetOtp = Math.floor(1000 + Math.random() * 9000).toString();
+    user.resetOtp = resetOtp;
+    user.resetOtpExpiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    writeDB(db);
+
+    try {
+      await sendOtpEmail({
+        toEmail: user.email,
+        otpCode: resetOtp,
+        lang,
+        purpose: 'password_reset'
+      });
+      console.log(`[Auth] Password reset OTP sent to ${user.email}`);
+    } catch (err) {
+      console.warn(`[Auth] Failed to send password reset email to ${user.email}:`, err.message);
+    }
+  } else {
+    console.log(`[Auth] Forgot password requested for unregistered or suspended email: ${normalizedEmail} (Protected - generic response returned)`);
+  }
+
+  // Always return identical generic success message to prevent user enumeration
+  res.json({
+    success: true,
+    message: genericSuccessMessage
+  });
+});
+
+// POST /api/auth/reset-password
+app.post('/api/auth/reset-password', (req, res) => {
+  const { email, otp, newPassword, lang = 'ar' } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'ar' ? 'جميع الحقول مطلوبة' : 'Email, verification code, and new password are required'
+    });
+  }
+
+  const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>_\-=+])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>_\-=+]{8,}$/;
+  if (!passwordRegex.test(newPassword)) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'ar'
+        ? 'يجب أن تتكون كلمة المرور من 8 خانات على الأقل وتحتوي على رقم ورمز خاص واحد على الأقل'
+        : 'Password must be at least 8 characters long and contain at least one number and one special character'
+    });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const db = readDB();
+  const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
+
+  if (!user || !user.resetOtp || user.resetOtp !== String(otp).trim() || !user.resetOtpExpiresAt || Date.now() > user.resetOtpExpiresAt) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'ar' ? 'رمز التحقق غير صحيح أو انتهت صلاحيته' : 'Invalid or expired verification code'
+    });
+  }
+
+  // Set new password
+  user.passwordHash = bcrypt.hashSync(newPassword, 10);
+  user.resetOtp = null;
+  user.resetOtpExpiresAt = null;
+  user.isVerified = true;
+  user.lastLoginAt = new Date().toISOString();
+  writeDB(db);
+
+  const token = generateToken(user);
+  res.json({
+    success: true,
+    message: lang === 'ar' ? 'تمت استعادة كلمة المرور بنجاح وتسجيل الدخول.' : 'Password reset successfully. You are now logged in.',
     token,
     user: sanitizeUser(user)
   });
@@ -1591,11 +1687,11 @@ app.post('/api/stories/plan', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Story title or content required' });
   }
 
-  // Check story creation limit for Story Reader users
+  // Check story creation limit for non-admin users
   if (userId) {
     const db = readDB();
     const user = db.users.find(u => u.id === userId);
-    if (user && user.role === 'Story Reader' && user.freeStoriesLeft <= 0) {
+    if (user && user.role !== 'Admin' && (user.freeStoriesLeft || 0) <= 0) {
       return res.status(403).json({
         success: false,
         limitReached: true,
@@ -1740,10 +1836,18 @@ app.post('/api/stories/start-generation', async (req, res) => {
         const db = readDB();
         const dbUser = db.users.find(u => u.id === effectiveUserId);
         if (dbUser) {
+          if (dbUser.role !== 'Admin' && (dbUser.freeStoriesLeft || 0) <= 0) {
+            return res.status(403).json({
+              success: false,
+              message: 'لقد استنفدت رصيد القصص المتاح لك. يرجى الترقية وشراء باقة للاستمرار في التأليف.'
+            });
+          }
           const fullName = (dbUser.firstName ? `${dbUser.firstName} ${dbUser.lastName || ''}`.trim() : (dbUser.username || dbUser.email?.split('@')[0]));
           if (fullName) effectiveAuthorName = fullName;
         }
-      } catch (e) {}
+      } catch (e) {
+        if (e && e.message && e.message.includes('استنفدت')) throw e;
+      }
     }
 
     await addStoryJob(currentStoryId, folderName, planData, { 
@@ -1897,7 +2001,7 @@ app.post('/api/stories/:id/status', (req, res) => {
     story.status = 'published';
 
     // If story has no author or author is marked as unknown, associate with publishing user
-    let effectiveUserId = userId || null;
+    let effectiveUserId = userId || story.authorId || null;
     const authHeader = req.headers.authorization;
     if (!effectiveUserId && authHeader && authHeader.startsWith('Bearer ')) {
       try {
@@ -1906,12 +2010,22 @@ app.post('/api/stories/:id/status', (req, res) => {
       } catch (e) {}
     }
 
+    let publishingUser = null;
     if (effectiveUserId) {
-      const dbUser = db.users.find(u => u.id === effectiveUserId);
-      if (dbUser) {
-        story.authorId = dbUser.id;
-        const fullName = (dbUser.firstName ? `${dbUser.firstName} ${dbUser.lastName || ''}`.trim() : (dbUser.username || dbUser.email?.split('@')[0]));
+      publishingUser = db.users.find(u => u.id === effectiveUserId);
+      if (publishingUser) {
+        story.authorId = publishingUser.id;
+        const fullName = (publishingUser.firstName ? `${publishingUser.firstName} ${publishingUser.lastName || ''}`.trim() : (publishingUser.username || publishingUser.email?.split('@')[0]));
         story.authorName = fullName || authorName || story.authorName;
+
+        // Deduct 1 credit if not already deducted and user is not Admin
+        if (!story.creditDeducted && publishingUser.role !== 'Admin') {
+          if ((publishingUser.freeStoriesLeft || 0) > 0) {
+            publishingUser.freeStoriesLeft -= 1;
+          }
+          story.creditDeducted = true;
+          console.log(`[Story Status] Deducted 1 credit from user ${publishingUser.email}. Remaining balance: ${publishingUser.freeStoriesLeft}`);
+        }
       } else {
         story.authorId = effectiveUserId;
         if (authorName) story.authorName = authorName;
@@ -1920,8 +2034,18 @@ app.post('/api/stories/:id/status', (req, res) => {
       story.authorName = authorName;
     }
 
+    if (req.body.isAiGenerated !== undefined) {
+      story.isAiGenerated = Boolean(req.body.isAiGenerated === true || req.body.isAiGenerated === 'true');
+    }
+
     writeDB(db);
-    return res.json({ success: true, action: 'published', story });
+    return res.json({
+      success: true,
+      action: 'published',
+      story,
+      user: publishingUser ? sanitizeUser(publishingUser) : null,
+      freeStoriesLeft: publishingUser ? publishingUser.freeStoriesLeft : undefined
+    });
   }
 });
 

@@ -162,6 +162,46 @@ export function AuthProvider({ children }) {
     setUser(updatedUser);
   };
 
+  const forgotPassword = async (email, lang = 'ar') => {
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, lang })
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      return {
+        success: false,
+        message: lang === 'ar' ? 'تعذر الاتصال بالخادم. يرجى المحاولة لاحقاً.' : 'Network error. Please try again later.'
+      };
+    }
+  };
+
+  const resetPassword = async ({ email, otp, newPassword, lang = 'ar' }) => {
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp, newPassword, lang })
+      });
+      const data = await res.json();
+      if (data.success && data.token && data.user) {
+        localStorage.setItem('qisas_token', data.token);
+        setToken(data.token);
+        setUser(data.user);
+        setAuthModalOpen(false);
+      }
+      return data;
+    } catch (err) {
+      return {
+        success: false,
+        message: lang === 'ar' ? 'تعذر الاتصال بالخادم. يرجى المحاولة لاحقاً.' : 'Network error. Please try again later.'
+      };
+    }
+  };
+
   const openAuthModal = (tab = 'login', email = '') => {
     setAuthModalTab(tab);
     if (email) setOtpEmail(email);
@@ -200,6 +240,8 @@ export function AuthProvider({ children }) {
         resendOtp,
         logout,
         updateProfile,
+        forgotPassword,
+        resetPassword,
         refreshUser: () => token && fetchCurrentUser(token),
         isAdmin,
         isStoryMaker,
