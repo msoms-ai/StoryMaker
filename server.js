@@ -9,8 +9,9 @@ import { generateAndSaveSlideImage, generateProfileCoverImage, generateCharacter
 import { generateStoryPlanWithGemini, generateStoryTextWithGemini } from './aiTextService.js';
 import { generateAndSaveSlideVoice } from './aiVoiceService.js';
 import { sendOtpEmail, sendTeacherRequestToAdmin, sendPackagePurchaseEmail, sendFeedbackEmail } from './emailService.js';
-import { generateToken, authenticateUser, requireRole } from './authMiddleware.js';
-import { startWorker, addStoryJob, jobStatusStore, getStoryJobStatus } from './queueService.js';
+import jwt from 'jsonwebtoken';
+import { generateToken, authenticateUser, requireRole, JWT_SECRET } from './authMiddleware.js';
+import { startWorker, addStoryJob, jobStatusStore, getStoryJobStatus, addVideoJob, getVideoJobStatus } from './queueService.js';
 import { processStoryGeneration } from './generationWorker.js';
 
 import multer from 'multer';
@@ -45,9 +46,126 @@ const DB_FILE = path.join(STORIES_DIR, 'database.json');
 
 // Serve static assets
 app.use('/STORIES', express.static(STORIES_DIR));
-app.use('/USERS', express.static(USERS_DIR));
+app.use('/USERS', (req, res, next) => {
+  // Prevent directory traversal attacks
+  const safePath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, '');
+  const lowerPath = safePath.toLowerCase();
+
+  // Protect school ID and teacher proof documents
+  if (lowerPath.includes('proof') || lowerPath.includes('school_id') || lowerPath.includes('id_proof')) {
+    const authHeader = req.headers.authorization || (req.query && req.query.token ? `Bearer ${req.query.token}` : null);
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(403).json({ error: 'Access denied: ID verification proof is confidential.' });
+    }
+    try {
+      const token = authHeader.split(' ')[1];
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const db = readDB();
+      const currentUser = db.users.find(u => u.id === decoded.id);
+      if (!currentUser) return res.status(403).json({ error: 'User not found' });
+
+      // Allow if admin or if the file belongs to this user's folder
+      const requestedFolder = safePath.split(/[\/\\]/).filter(Boolean)[0];
+      if (currentUser.role === 'Admin' || currentUser.userFolder === requestedFolder) {
+        return next();
+      }
+      return res.status(403).json({ error: 'Unauthorized to view this confidential verification document.' });
+    } catch (e) {
+      return res.status(403).json({ error: 'Invalid or expired session token.' });
+    }
+  }
+  next();
+}, express.static(USERS_DIR));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/Fonts', express.static(path.join(__dirname, 'Fonts')));
+
+// In-memory cache for fast word hover translations
+const wordTranslationCache = new Map();
+
+// GET /api/translate-word - Instant word translation popup for story reader
+app.get('/api/translate-word', async (req, res) => {
+  try {
+    const rawWord = (req.query.word || '').trim();
+    const targetLang = (req.query.to || (req.query.lang === 'ar' ? 'en' : 'ar')).toLowerCase();
+
+    if (!rawWord || rawWord.length > 50) {
+      return res.status(400).json({ error: 'Word is required and must be under 50 characters' });
+    }
+
+    // Strip punctuation, quotes, brackets, and vocalization symbols for clean translation lookup
+    const cleanWord = rawWord
+      .replace(/^[\s.,!?;:«»"'`()[\]{}<>\-_—*~]+/gu, '')
+      .replace(/[\s.,!?;:«»"'`()[\]{}<>\-_—*~]+$/gu, '')
+      .trim();
+
+    if (!cleanWord) {
+      return res.json({ word: rawWord, cleanWord: '', translation: '' });
+    }
+
+    const cacheKey = `${targetLang}:${cleanWord.toLowerCase()}`;
+    if (wordTranslationCache.has(cacheKey)) {
+      return res.json({
+        word: rawWord,
+        cleanWord,
+        translation: wordTranslationCache.get(cacheKey),
+        cached: true
+      });
+    }
+
+    let translated = '';
+    // 1. Fast Google Translate query
+    try {
+      const gtxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(cleanWord)}`;
+      const gtxRes = await fetch(gtxUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (gtxRes.ok) {
+        const gtxData = await gtxRes.json();
+        translated = gtxData?.[0]?.[0]?.[0]?.trim() || '';
+      }
+    } catch (gtxErr) {
+      console.warn(`[Translation] GTX notice for "${cleanWord}":`, gtxErr.message);
+    }
+
+    // 2. Gemini Flash fallback if GTX failed
+    if (!translated && process.env.GEMINI_API_KEY) {
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+        const prompt = `Translate this single word/phrase into ${targetLang === 'ar' ? 'Arabic' : 'English'}. Return ONLY the direct translated word with no punctuation, no quotes, no explanation: "${cleanWord}"`;
+        const gemRes = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.0, maxOutputTokens: 20 }
+          })
+        });
+        if (gemRes.ok) {
+          const gemData = await gemRes.json();
+          translated = gemData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        }
+      } catch (gemErr) {
+        console.warn(`[Translation] Gemini fallback notice:`, gemErr.message);
+      }
+    }
+
+    if (translated) {
+      wordTranslationCache.set(cacheKey, translated);
+      // Keep cache under 10,000 words
+      if (wordTranslationCache.size > 10000) {
+        const firstKey = wordTranslationCache.keys().next().value;
+        wordTranslationCache.delete(firstKey);
+      }
+    }
+
+    res.json({
+      word: rawWord,
+      cleanWord,
+      translation: translated || cleanWord
+    });
+  } catch (err) {
+    console.error('[Translation API Error]:', err.message);
+    res.status(500).json({ error: 'Failed to translate word' });
+  }
+});
 
 // Category Data
 const DEFAULT_CATEGORIES = [
@@ -283,6 +401,9 @@ app.post('/api/auth/signup', async (req, res) => {
     db.users.push(newUser);
   }
 
+  if (user) {
+    user.otpAttempts = 0;
+  }
   writeDB(db);
 
   // Dispatch OTP email via SMTP
@@ -297,8 +418,7 @@ app.post('/api/auth/signup', async (req, res) => {
     success: true,
     message: 'OTP verification code sent to your email',
     email: normalizedEmail,
-    otpExpiresInSeconds: 300,
-    devOtp: process.env.NODE_ENV === 'production' ? undefined : otpCode
+    otpExpiresInSeconds: 300
   });
 });
 
@@ -318,6 +438,19 @@ app.post('/api/auth/verify-otp', (req, res) => {
     return res.status(404).json({ success: false, message: 'User account not found' });
   }
 
+  // Rate limiting / Brute force lockout check: 5 failed attempts max
+  if ((user.otpAttempts || 0) >= 5) {
+    user.otpCode = null;
+    user.otpExpiresAt = null;
+    user.otpAttempts = 0;
+    writeDB(db);
+    return res.status(429).json({
+      success: false,
+      locked: true,
+      message: 'Too many incorrect attempts. This verification code has been invalidated for security. Please request a new code.'
+    });
+  }
+
   if (Date.now() > user.otpExpiresAt) {
     return res.status(400).json({
       success: false,
@@ -327,13 +460,22 @@ app.post('/api/auth/verify-otp', (req, res) => {
   }
 
   if (user.otpCode !== otpCode.trim()) {
-    return res.status(400).json({ success: false, message: 'Incorrect 4-digit verification code' });
+    user.otpAttempts = (user.otpAttempts || 0) + 1;
+    writeDB(db);
+    const remaining = Math.max(0, 5 - user.otpAttempts);
+    return res.status(400).json({
+      success: false,
+      message: remaining > 0 
+        ? `Incorrect 4-digit verification code. (${remaining} attempts remaining)`
+        : 'Too many incorrect attempts. Code invalidated.'
+    });
   }
 
   // Activate user account
   user.isVerified = true;
   user.otpCode = null;
   user.otpExpiresAt = null;
+  user.otpAttempts = 0;
   user.lastLoginAt = new Date().toISOString();
   writeDB(db);
 
@@ -365,6 +507,7 @@ app.post('/api/auth/resend-otp', async (req, res) => {
   const otpCode = Math.floor(1000 + Math.random() * 9000).toString();
   user.otpCode = otpCode;
   user.otpExpiresAt = Date.now() + 5 * 60 * 1000;
+  user.otpAttempts = 0;
   writeDB(db);
 
   await sendOtpEmail({
@@ -377,8 +520,7 @@ app.post('/api/auth/resend-otp', async (req, res) => {
   res.json({
     success: true,
     message: 'A new 4-digit verification code has been dispatched to your email',
-    otpExpiresInSeconds: 300,
-    devOtp: process.env.NODE_ENV === 'production' ? undefined : otpCode
+    otpExpiresInSeconds: 300
   });
 });
 
@@ -455,6 +597,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const resetOtp = Math.floor(1000 + Math.random() * 9000).toString();
     user.resetOtp = resetOtp;
     user.resetOtpExpiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    user.resetOtpAttempts = 0;
     writeDB(db);
 
     try {
@@ -504,10 +647,34 @@ app.post('/api/auth/reset-password', (req, res) => {
   const db = readDB();
   const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
 
-  if (!user || !user.resetOtp || user.resetOtp !== String(otp).trim() || !user.resetOtpExpiresAt || Date.now() > user.resetOtpExpiresAt) {
+  if (!user) {
     return res.status(400).json({
       success: false,
       message: lang === 'ar' ? 'رمز التحقق غير صحيح أو انتهت صلاحيته' : 'Invalid or expired verification code'
+    });
+  }
+
+  // Rate limiting / Brute force lockout check: 5 failed attempts max
+  if ((user.resetOtpAttempts || 0) >= 5) {
+    user.resetOtp = null;
+    user.resetOtpExpiresAt = null;
+    user.resetOtpAttempts = 0;
+    writeDB(db);
+    return res.status(429).json({
+      success: false,
+      message: lang === 'ar' ? 'تم تجاوز الحد الأقصى للمحاولات. تم إلغاء الرمز لأسباب أمنية. يرجى طلب رمز جديد.' : 'Too many incorrect attempts. Code invalidated for security. Please request a new one.'
+    });
+  }
+
+  if (!user.resetOtp || user.resetOtp !== String(otp).trim() || !user.resetOtpExpiresAt || Date.now() > user.resetOtpExpiresAt) {
+    user.resetOtpAttempts = (user.resetOtpAttempts || 0) + 1;
+    writeDB(db);
+    const rem = Math.max(0, 5 - user.resetOtpAttempts);
+    return res.status(400).json({
+      success: false,
+      message: lang === 'ar'
+        ? `رمز التحقق غير صحيح أو انتهت صلاحيته (${rem} محاولات متبقية)`
+        : `Invalid or expired verification code (${rem} attempts remaining)`
     });
   }
 
@@ -515,6 +682,7 @@ app.post('/api/auth/reset-password', (req, res) => {
   user.passwordHash = bcrypt.hashSync(newPassword, 10);
   user.resetOtp = null;
   user.resetOtpExpiresAt = null;
+  user.resetOtpAttempts = 0;
   user.isVerified = true;
   user.lastLoginAt = new Date().toISOString();
   writeDB(db);
@@ -542,25 +710,6 @@ app.get('/api/auth/me', authenticateUser, (req, res) => {
 // 2. USER PROFILE & AVATAR ENDPOINTS
 // -------------------------------------------------------------
 
-// PUT /api/user/profile
-app.put('/api/user/profile', authenticateUser, (req, res) => {
-  const { firstName, lastName, mobileNumber, socialLinks } = req.body;
-  const db = readDB();
-  const user = db.users.find(u => u.id === req.user.id);
-
-  if (!user) {
-    return res.status(404).json({ success: false, message: 'User not found' });
-  }
-
-  user.firstName = firstName !== undefined ? firstName : user.firstName;
-  user.lastName = lastName !== undefined ? lastName : user.lastName;
-  user.mobileNumber = mobileNumber !== undefined ? mobileNumber : user.mobileNumber;
-  user.socialLinks = socialLinks ? { ...(user.socialLinks || {}), ...socialLinks } : user.socialLinks;
-
-  writeDB(db);
-  res.json({ success: true, message: 'Profile updated successfully', user: sanitizeUser(user) });
-});
-
 // POST /api/user/change-email-otp - Request OTP for email update
 app.post('/api/user/change-email-otp', authenticateUser, async (req, res) => {
   const { newEmail, lang = 'ar' } = req.body;
@@ -581,6 +730,7 @@ app.post('/api/user/change-email-otp', authenticateUser, async (req, res) => {
   user.pendingEmail = normalizedNewEmail;
   user.pendingEmailOtp = otpCode;
   user.pendingOtpExpiresAt = Date.now() + 5 * 60 * 1000;
+  user.pendingOtpAttempts = 0;
   writeDB(db);
 
   await sendOtpEmail({
@@ -593,8 +743,7 @@ app.post('/api/user/change-email-otp', authenticateUser, async (req, res) => {
   res.json({
     success: true,
     message: 'Verification code sent to your new email',
-    pendingEmail: normalizedNewEmail,
-    devOtp: process.env.NODE_ENV === 'production' ? undefined : otpCode
+    pendingEmail: normalizedNewEmail
   });
 });
 
@@ -1117,10 +1266,10 @@ app.post('/api/packages/ziina/webhook', express.json(), async (req, res) => {
     console.log('[Ziina Webhook] Received webhook payload:', payload?.event, payload?.data?.id);
 
     const intentId = payload?.data?.id;
-    const status = payload?.data?.status;
 
-    if (intentId && status === 'completed') {
-      await fulfillZiinaPayment(intentId, payload.data, 'ar');
+    if (intentId) {
+      // Security: ALWAYS verify directly with Ziina API by passing paymentData=null, never trust unverified webhook body
+      await fulfillZiinaPayment(intentId, null, 'ar');
     }
 
     res.status(200).json({ received: true });
@@ -1131,68 +1280,11 @@ app.post('/api/packages/ziina/webhook', express.json(), async (req, res) => {
   }
 });
 
-// POST /api/packages/checkout - Simulated demo payment & credit allocation (sandbox fallback)
-app.post('/api/packages/checkout', authenticateUser, async (req, res) => {
-  const { packageId, cardHolder, cardNumber, expiryDate, cvv, lang = 'ar' } = req.body;
-
-  const pkg = PACKAGES.find(p => p.id === packageId);
-  if (!pkg) {
-    return res.status(404).json({ success: false, message: 'Package not found' });
-  }
-
-  if (!cardHolder || !cardNumber || !expiryDate || !cvv) {
-    return res.status(400).json({ success: false, message: 'All payment card details are required' });
-  }
-
-  // Simulated card validation
-  const cleanCardNumber = cardNumber.replace(/\s+/g, '');
-  if (cleanCardNumber.length < 14) {
-    return res.status(400).json({ success: false, message: 'Invalid card number format' });
-  }
-
-  const db = readDB();
-  const user = db.users.find(u => u.id === req.user.id);
-  if (!user) {
-    return res.status(404).json({ success: false, message: 'User not found' });
-  }
-
-  // Allocate stories
-  user.freeStoriesLeft = (user.freeStoriesLeft || 0) + pkg.storiesCount;
-
-  const transactionId = `TXN_${Date.now()}`;
-  const transaction = {
-    id: transactionId,
-    userId: user.id,
-    userEmail: user.email,
-    packageId: pkg.id,
-    packageName: pkg.name[lang] || pkg.name.ar,
-    storiesCount: pkg.storiesCount,
-    amount: pkg.price,
-    currency: pkg.currency,
-    cardLast4: cleanCardNumber.slice(-4),
-    status: 'completed',
-    createdAt: new Date().toISOString()
-  };
-
-  db.transactions.unshift(transaction);
-  writeDB(db);
-
-  await sendPackagePurchaseEmail({
-    toEmail: user.email,
-    packageName: pkg.name[lang] || pkg.name.ar,
-    storiesAdded: pkg.storiesCount,
-    price: pkg.price,
-    transactionId,
-    lang
-  });
-
-  res.json({
-    success: true,
-    message: 'Payment completed successfully and story credits added!',
-    transactionId,
-    storiesAdded: pkg.storiesCount,
-    freeStoriesLeft: user.freeStoriesLeft,
-    user: sanitizeUser(user)
+// POST /api/packages/checkout - DEPRECATED / DISABLED for security
+app.post('/api/packages/checkout', authenticateUser, (req, res) => {
+  return res.status(403).json({
+    success: false,
+    message: 'Direct demo checkout has been deprecated. All package purchases are securely processed via Ziina payment gateway.'
   });
 });
 
@@ -1978,8 +2070,8 @@ app.post('/api/stories/finalize-generation', async (req, res) => {
 });
 
 // POST /api/stories/:id/status - Approve / Publish or Delete
-app.post('/api/stories/:id/status', (req, res) => {
-  const { status, userId, authorName } = req.body;
+app.post('/api/stories/:id/status', authenticateUser, (req, res) => {
+  const { status, authorName } = req.body;
   const db = readDB();
   const storyIndex = db.stories.findIndex((s) => s.id === req.params.id);
 
@@ -1988,11 +2080,27 @@ app.post('/api/stories/:id/status', (req, res) => {
   }
 
   const story = db.stories[storyIndex];
+  const currentUser = req.user;
+  const isAdmin = currentUser.role === 'Admin';
+  // Allowed if admin, or if user is recorded author, or if draft story had no assigned author yet
+  const isOwner = story.authorId === currentUser.id || (!story.authorId && story.status === 'draft');
+
+  if (!isAdmin && !isOwner) {
+    return res.status(403).json({ success: false, message: 'Unauthorized. You do not have permission to modify this story.' });
+  }
 
   if (status === 'deleted') {
-    const storyFolderPath = path.join(STORIES_DIR, story.folderName);
-    if (fs.existsSync(storyFolderPath)) {
-      fs.rmSync(storyFolderPath, { recursive: true, force: true });
+    // Path traversal defense
+    if (story.folderName) {
+      const safeFolder = path.basename(story.folderName);
+      const storyFolderPath = path.resolve(STORIES_DIR, safeFolder);
+      if (safeFolder && safeFolder !== '.' && storyFolderPath.startsWith(STORIES_DIR) && fs.existsSync(storyFolderPath)) {
+        try {
+          fs.rmSync(storyFolderPath, { recursive: true, force: true });
+        } catch (err) {
+          console.error(`[Story Delete] Error removing folder:`, err.message);
+        }
+      }
     }
     db.stories.splice(storyIndex, 1);
     writeDB(db);
@@ -2000,38 +2108,24 @@ app.post('/api/stories/:id/status', (req, res) => {
   } else {
     story.status = 'published';
 
-    // If story has no author or author is marked as unknown, associate with publishing user
-    let effectiveUserId = userId || story.authorId || null;
-    const authHeader = req.headers.authorization;
-    if (!effectiveUserId && authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
-        effectiveUserId = decoded.id;
-      } catch (e) {}
-    }
+    // Securely tie author to authenticated user
+    const publishingUser = db.users.find(u => u.id === currentUser.id);
+    if (publishingUser) {
+      story.authorId = publishingUser.id;
+      const fullName = (publishingUser.firstName ? `${publishingUser.firstName} ${publishingUser.lastName || ''}`.trim() : (publishingUser.username || publishingUser.email?.split('@')[0]));
+      story.authorName = fullName || authorName || story.authorName;
 
-    let publishingUser = null;
-    if (effectiveUserId) {
-      publishingUser = db.users.find(u => u.id === effectiveUserId);
-      if (publishingUser) {
-        story.authorId = publishingUser.id;
-        const fullName = (publishingUser.firstName ? `${publishingUser.firstName} ${publishingUser.lastName || ''}`.trim() : (publishingUser.username || publishingUser.email?.split('@')[0]));
-        story.authorName = fullName || authorName || story.authorName;
-
-        // Deduct 1 credit if not already deducted and user is not Admin
-        if (!story.creditDeducted && publishingUser.role !== 'Admin') {
-          if ((publishingUser.freeStoriesLeft || 0) > 0) {
-            publishingUser.freeStoriesLeft -= 1;
-          }
-          story.creditDeducted = true;
-          console.log(`[Story Status] Deducted 1 credit from user ${publishingUser.email}. Remaining balance: ${publishingUser.freeStoriesLeft}`);
+      // Deduct 1 credit if not already deducted and user is not Admin
+      if (!story.creditDeducted && publishingUser.role !== 'Admin') {
+        if ((publishingUser.freeStoriesLeft || 0) > 0) {
+          publishingUser.freeStoriesLeft -= 1;
         }
-      } else {
-        story.authorId = effectiveUserId;
-        if (authorName) story.authorName = authorName;
+        story.creditDeducted = true;
+        console.log(`[Story Status] Deducted 1 credit from user ${publishingUser.email}. Remaining balance: ${publishingUser.freeStoriesLeft}`);
       }
-    } else if (authorName && (!story.authorName || story.authorName === 'مؤلف مجهول' || story.authorName === 'Anonymous Author')) {
-      story.authorName = authorName;
+    } else {
+      story.authorId = currentUser.id;
+      if (authorName) story.authorName = authorName;
     }
 
     if (req.body.isAiGenerated !== undefined) {
@@ -2046,6 +2140,63 @@ app.post('/api/stories/:id/status', (req, res) => {
       user: publishingUser ? sanitizeUser(publishingUser) : null,
       freeStoriesLeft: publishingUser ? publishingUser.freeStoriesLeft : undefined
     });
+  }
+});
+
+// POST /api/stories/:id/generate-video - Start or return background MP4 video rendering
+app.post('/api/stories/:id/generate-video', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = readDB();
+    const story = (db.stories || []).find(s => s.id === id || s.folderName === id);
+
+    if (!story) {
+      return res.status(404).json({ success: false, message: 'Story not found' });
+    }
+
+    // Check if video file already exists on disk
+    const safeFolder = path.basename(story.folderName);
+    const videoDiskPath = path.join(STORIES_DIR, safeFolder, 'story_video.mp4');
+    if (fs.existsSync(videoDiskPath) && fs.statSync(videoDiskPath).size > 1000) {
+      const videoUrl = story.videoUrl || `/STORIES/${encodeURIComponent(safeFolder)}/story_video.mp4`;
+      return res.json({
+        success: true,
+        status: 'completed',
+        progress: 100,
+        videoUrl
+      });
+    }
+
+    // Check if already generating
+    const currentStatus = await getVideoJobStatus(id, STORIES_DIR);
+    if (currentStatus.status === 'processing' || currentStatus.status === 'queued') {
+      return res.json(currentStatus);
+    }
+
+    // Queue video generation job
+    const queuedResult = await addVideoJob(story, STORIES_DIR);
+    res.json({
+      success: true,
+      status: 'processing',
+      progress: 5,
+      stage: 'Starting background video generation...',
+      queuedResult
+    });
+  } catch (err) {
+    console.error('[Generate Video API Error]:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/stories/:id/video-status - Poll video generation progress
+app.get('/api/stories/:id/video-status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const status = await getVideoJobStatus(id, STORIES_DIR);
+    res.json(status);
+  } catch (err) {
+    console.error('[Video Status API Error]:', err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -2139,9 +2290,10 @@ app.delete('/api/moderation/stories/:id', authenticateUser, (req, res) => {
 
   // 1. Permanently delete story folder and all photos / voices from disk
   if (story.folderName) {
-    const storyFolderPath = path.join(STORIES_DIR, story.folderName);
+    const safeFolder = path.basename(story.folderName);
+    const storyFolderPath = path.resolve(STORIES_DIR, safeFolder);
     try {
-      if (fs.existsSync(storyFolderPath)) {
+      if (safeFolder && safeFolder !== '.' && storyFolderPath.startsWith(STORIES_DIR) && fs.existsSync(storyFolderPath)) {
         fs.rmSync(storyFolderPath, { recursive: true, force: true });
         console.log(`[Stories Moderator] Completely deleted folder on disk: ${storyFolderPath}`);
       }

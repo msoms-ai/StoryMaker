@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { X, Share2, Copy, Check, Download, FileText, Globe, Calendar, User, Sparkles, MessageCircle, Send, Twitter, Facebook } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Share2, Copy, Check, Download, FileText, Globe, Calendar, User, Sparkles, MessageCircle, Send, Twitter, Facebook, Video, Play } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { DUBAI_FONT_CSS } from '../utils/dubaiFont';
@@ -8,7 +8,90 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState({ current: 0, total: 0 });
+  const [isVideoRendering, setIsVideoRendering] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoStage, setVideoStage] = useState('');
+  const [videoUrl, setVideoUrl] = useState(story?.videoUrl || null);
+  const videoPollIntervalRef = useRef(null);
   const printContainerRef = useRef(null);
+
+  // Check initial video status when opening modal
+  useEffect(() => {
+    if (!isOpen || !story) return;
+    const storyKey = story.id || story.folderName;
+    fetch(`/api/stories/${encodeURIComponent(storyKey)}/video-status`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'completed' && data.videoUrl) {
+          setVideoUrl(data.videoUrl);
+          setIsVideoRendering(false);
+        } else if (data.status === 'processing' || data.status === 'queued') {
+          setIsVideoRendering(true);
+          setVideoProgress(data.progress || 10);
+          setVideoStage(data.stage || '');
+          startPollingVideo(storyKey);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      if (videoPollIntervalRef.current) clearInterval(videoPollIntervalRef.current);
+    };
+  }, [isOpen, story]);
+
+  const startPollingVideo = (storyKey) => {
+    if (videoPollIntervalRef.current) clearInterval(videoPollIntervalRef.current);
+    videoPollIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/stories/${encodeURIComponent(storyKey)}/video-status`);
+        const data = await res.json();
+        if (data.status === 'completed' && data.videoUrl) {
+          clearInterval(videoPollIntervalRef.current);
+          setVideoUrl(data.videoUrl);
+          setIsVideoRendering(false);
+          setVideoProgress(100);
+        } else if (data.status === 'processing' || data.status === 'queued') {
+          setVideoProgress(data.progress || 15);
+          setVideoStage(data.stage || '');
+        } else if (data.status === 'failed') {
+          clearInterval(videoPollIntervalRef.current);
+          setIsVideoRendering(false);
+          alert(lang === 'ar' ? 'عذراً، فشل توليد الفيديو: ' + (data.error || 'خطأ غير معروف') : 'Failed to generate video: ' + (data.error || 'Unknown error'));
+        }
+      } catch (e) {}
+    }, 2500);
+  };
+
+  const handleGenerateOrDownloadVideo = async () => {
+    const storyKey = story.id || story.folderName;
+
+    // If video is already ready, trigger direct download / playback
+    if (videoUrl) {
+      window.open(videoUrl, '_blank');
+      return;
+    }
+
+    setIsVideoRendering(true);
+    setVideoProgress(5);
+    setVideoStage(lang === 'ar' ? 'جاري تجهيز مقاطع الفيديو...' : 'Preparing video clips...');
+
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(storyKey)}/generate-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.status === 'completed' && data.videoUrl) {
+        setVideoUrl(data.videoUrl);
+        setIsVideoRendering(false);
+      } else {
+        startPollingVideo(storyKey);
+      }
+    } catch (err) {
+      setIsVideoRendering(false);
+      alert(lang === 'ar' ? 'حدث خطأ أثناء طلب توليد الفيديو' : 'Error requesting video generation');
+    }
+  };
 
   if (!isOpen || !story) return null;
 
@@ -262,6 +345,58 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
             {lang === 'ar'
               ? 'يحتوي الملف على جميع المشاهد ونصوصها مع الترويسة والتوثيق في صفحات أفقية جاهزة للطباعة'
               : 'Includes all story scenes and texts with header & footer in landscape printable pages'}
+          </p>
+        </div>
+
+        {/* SECTION 3: Download Animated MP4 Video */}
+        <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+          <button
+            onClick={handleGenerateOrDownloadVideo}
+            disabled={isVideoRendering}
+            className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 shadow-lg transition-all ${
+              videoUrl
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-500/25'
+                : 'bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white shadow-amber-500/25'
+            } disabled:opacity-50`}
+          >
+            {isVideoRendering ? (
+              <>
+                <Sparkles className="w-5 h-5 animate-spin" />
+                <span>
+                  {lang === 'ar'
+                    ? `جاري معالجة فيديو القصة (${videoProgress}%)...`
+                    : `Rendering Story Video (${videoProgress}%)...`}
+                </span>
+              </>
+            ) : videoUrl ? (
+              <>
+                <Download className="w-5 h-5" />
+                <span>{lang === 'ar' ? 'تحميل أو مشاهدة فيديو القصة (MP4)' : 'Download / Watch Story Video (MP4)'}</span>
+              </>
+            ) : (
+              <>
+                <Video className="w-5 h-5" />
+                <span>{lang === 'ar' ? 'توليد وتحميل فيديو القصة (MP4)' : 'Generate & Download Story Video (MP4)'}</span>
+              </>
+            )}
+          </button>
+          {isVideoRendering && (
+            <div className="mt-2.5 space-y-1">
+              <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 transition-all duration-300"
+                  style={{ width: `${videoProgress}%` }}
+                />
+              </div>
+              <p className="text-center text-[11px] text-amber-500 font-bold">
+                {videoStage || (lang === 'ar' ? 'جاري رسم وتجميع المشاهد في الخلفية...' : 'Processing scenes in background...')}
+              </p>
+            </div>
+          )}
+          <p className="text-center text-[11px] text-slate-400 dark:text-slate-500 mt-2">
+            {lang === 'ar'
+              ? 'فيديو عالي الدقة Full HD بصوت الرواة والمؤثرات مدمج مع الرسوم في ملف MP4 واحد'
+              : 'Full HD MP4 video with full voiceover narration and slide illustrations combined'}
           </p>
         </div>
 

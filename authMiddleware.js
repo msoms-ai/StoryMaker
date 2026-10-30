@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'qisas_super_secret_jwt_key_2026_msoms_ai';
+export const JWT_SECRET = process.env.JWT_SECRET || 'qisas_super_secret_jwt_key_2026_msoms_ai';
 
 export function generateToken(user) {
   return jwt.sign(

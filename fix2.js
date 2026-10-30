@@ -1,1 +1,0 @@
-import fs from 'fs'; let text = fs.readFileSync('emailService.js', 'utf8'); const lines = text.split('\n'); const validLines = lines.slice(0, 180); fs.writeFileSync('emailService.js', validLines.join('\n') + '\n', 'utf8');

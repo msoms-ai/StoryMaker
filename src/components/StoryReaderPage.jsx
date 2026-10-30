@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import confetti from 'canvas-confetti';
-import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2 } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2, Video } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import EnhancedAudioPlayer from './EnhancedAudioPlayer';
 import ShareStoryModal from './ShareStoryModal';
@@ -159,15 +159,28 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           )}
         </div>
 
-        {/* Top Right Share Button */}
-        <button
-          onClick={() => setIsShareModalOpen(true)}
-          className={`px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2 ${lang === 'ar' ? 'font-arabic' : ''}`}
-          title={lang === 'ar' ? 'مشاركة أو تحميل القصة كـ PDF' : 'Share or Download Story as PDF'}
-        >
-          <Share2 className="w-4 h-4" />
-          <span>{lang === 'ar' ? 'مشاركة' : 'Share'}</span>
-        </button>
+        {/* Top Right Header Actions */}
+        <div className="flex items-center gap-2">
+          {/* Video Button */}
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className={`px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-1.5 ${lang === 'ar' ? 'font-arabic' : ''}`}
+            title={lang === 'ar' ? 'مشاهدة وتحميل فيديو القصة (MP4)' : 'Watch & Download Story Video (MP4)'}
+          >
+            <Video className="w-4 h-4" />
+            <span>{lang === 'ar' ? 'فيديو' : 'Video'}</span>
+          </button>
+
+          {/* Share & PDF Button */}
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className={`px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2 ${lang === 'ar' ? 'font-arabic' : ''}`}
+            title={lang === 'ar' ? 'مشاركة أو تحميل القصة كـ PDF' : 'Share or Download Story as PDF'}
+          >
+            <Share2 className="w-4 h-4" />
+            <span>{lang === 'ar' ? 'مشاركة' : 'Share'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Middle Slide Container */}

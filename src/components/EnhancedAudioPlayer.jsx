@@ -36,6 +36,43 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
   const totalChars = charCounter > 0 ? charCounter - 1 : 1;
 
   const [timepoints, setTimepoints] = useState(null);
+  const clientTranslationCacheRef = useRef(new Map());
+  const [hoveredWordInfo, setHoveredWordInfo] = useState(null);
+  const hoverTimeoutRef = useRef(null);
+
+  const handleWordMouseEnter = (word, idx) => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+
+    const clean = word
+      .replace(/^[\s.,!?;:«»"'`()[\]{}<>\-_—*~]+/gu, '')
+      .replace(/[\s.,!?;:«»"'`()[\]{}<>\-_—*~]+$/gu, '')
+      .trim();
+    if (!clean) return;
+
+    if (clientTranslationCacheRef.current.has(clean)) {
+      setHoveredWordInfo({ idx, word: clean, translation: clientTranslationCacheRef.current.get(clean), loading: false });
+      return;
+    }
+
+    setHoveredWordInfo({ idx, word: clean, translation: null, loading: true });
+
+    fetch(`/api/translate-word?word=${encodeURIComponent(clean)}&lang=${lang}`)
+      .then(r => r.json())
+      .then(data => {
+        const trans = data.translation || clean;
+        clientTranslationCacheRef.current.set(clean, trans);
+        setHoveredWordInfo(prev => prev && prev.idx === idx ? { idx, word: clean, translation: trans, loading: false } : prev);
+      })
+      .catch(() => {
+        setHoveredWordInfo(prev => prev && prev.idx === idx ? { idx, word: clean, translation: clean, loading: false } : prev);
+      });
+  };
+
+  const handleWordMouseLeave = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredWordInfo(null);
+    }, 120);
+  };
 
   useEffect(() => {
     stopAudio();
@@ -305,20 +342,45 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
 
         </div>
 
-        {/* Real-time Spoken Word Karaoke Highlighting Text */}
+        {/* Real-time Spoken Word Karaoke Highlighting Text with Hover Translation */}
         <div className="flex flex-wrap items-center gap-1.5">
           {words.map((word, idx) => {
             const isSpoken = idx === activeWordIndex;
+            const isHovered = hoveredWordInfo && hoveredWordInfo.idx === idx;
             return (
               <span
                 key={idx}
-                className={`transition-all duration-200 rounded-lg px-1.5 py-0.5 ${
+                onMouseEnter={() => handleWordMouseEnter(word, idx)}
+                onMouseLeave={handleWordMouseLeave}
+                onClick={() => handleWordMouseEnter(word, idx)}
+                className={`relative group/word cursor-help transition-all duration-200 rounded-lg px-1.5 py-0.5 select-text ${
                   isSpoken
                     ? 'font-black text-amber-600 dark:text-amber-300 bg-amber-500/30 ring-2 ring-amber-500 scale-110 shadow-md'
-                    : 'text-slate-800 dark:text-slate-100'
+                    : isHovered
+                    ? 'text-amber-600 dark:text-amber-300 bg-amber-500/20 ring-1 ring-amber-500/50'
+                    : 'text-slate-800 dark:text-slate-100 hover:text-amber-500'
                 }`}
+                title={lang === 'ar' ? 'انقر أو مرر لعرض الترجمة' : 'Hover or tap to see translation'}
               >
                 {word}
+
+                {/* Hover Translation Popup */}
+                {isHovered && (
+                  <span
+                    className="absolute -top-9 left-1/2 -translate-x-1/2 bg-slate-900/95 dark:bg-slate-950/95 text-amber-300 border border-amber-500/50 px-2.5 py-1 rounded-xl shadow-2xl text-xs font-bold whitespace-nowrap z-50 pointer-events-none backdrop-blur-md flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-150"
+                    dir={lang === 'ar' ? 'ltr' : 'rtl'}
+                  >
+                    {hoveredWordInfo.loading ? (
+                      <span className="flex items-center gap-1 text-[11px] text-slate-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping inline-block"></span>
+                        <span>...</span>
+                      </span>
+                    ) : (
+                      <span className="text-amber-300 font-extrabold">{hoveredWordInfo.translation}</span>
+                    )}
+                    <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900/95 dark:bg-slate-950/95 border-b border-r border-amber-500/50 rotate-45"></span>
+                  </span>
+                )}
               </span>
             );
           })}

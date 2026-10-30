@@ -17,6 +17,42 @@ const client = new textToSpeech.TextToSpeechClient({
 });
 
 /**
+ * Resolve Google Cloud TTS Voice dynamically based on character role and language
+ */
+function resolveVoiceSelection(lang, voiceGender = 'male', voiceRole = null) {
+  const isArabic = lang === 'ar';
+  const role = (voiceRole || '').toLowerCase();
+
+  if (isArabic) {
+    if (role.includes('child_female') || role.includes('girl') || role.includes('بنت') || role.includes('طفلة')) {
+      return { languageCode: 'ar-XA', name: 'ar-XA-Wavenet-D', pitch: 2.5, speakingRate: 0.95 };
+    }
+    if (role.includes('child_male') || role.includes('boy') || role.includes('ولد') || role.includes('طفل')) {
+      return { languageCode: 'ar-XA', name: 'ar-XA-Wavenet-C', pitch: 2.5, speakingRate: 0.95 };
+    }
+    if (role.includes('female') || role.includes('mother') || role.includes('teacher') || role.includes('أم') || role.includes('معلمة') || voiceGender === 'female') {
+      return { languageCode: 'ar-XA', name: 'ar-XA-Chirp3-HD-Aoede', pitch: 0.0, speakingRate: 0.95 };
+    }
+    return { languageCode: 'ar-XA', name: 'ar-XA-Chirp3-HD-Puck', pitch: 0.0, speakingRate: 0.95 };
+  } else {
+    // English
+    if (role.includes('child_female') || role.includes('girl')) {
+      return { languageCode: 'en-US', name: 'en-US-Neural2-C', pitch: 2.5, speakingRate: 0.95 };
+    }
+    if (role.includes('child_male') || role.includes('boy')) {
+      return { languageCode: 'en-US', name: 'en-US-Neural2-A', pitch: 2.5, speakingRate: 0.95 };
+    }
+    if (role.includes('elderly') || role.includes('grandfather') || role.includes('grandmother')) {
+      return { languageCode: 'en-US', name: 'en-US-Neural2-D', pitch: -2.0, speakingRate: 0.90 };
+    }
+    if (role.includes('female') || role.includes('mother') || role.includes('teacher') || voiceGender === 'female') {
+      return { languageCode: 'en-US', name: 'en-US-Chirp3-HD-Aoede', pitch: 0.0, speakingRate: 0.95 };
+    }
+    return { languageCode: 'en-US', name: 'en-US-Chirp3-HD-Puck', pitch: 0.0, speakingRate: 0.95 };
+  }
+}
+
+/**
  * Generate Voice Narration Audio exclusively using Google Cloud Neural2 TTS API
  */
 export async function generateAndSaveSlideVoice({
@@ -24,9 +60,11 @@ export async function generateAndSaveSlideVoice({
   slideIndex,
   outputDir,
   lang = 'ar',
-  voiceGender = 'male'
+  voiceGender = 'male',
+  voiceRole = null
 }) {
-  console.log(`[AI Voice Service] Generating Voice Narration for Slide ${slideIndex + 1} via Google Cloud Chirp3-HD...`);
+  const selectedVoice = resolveVoiceSelection(lang, voiceGender, voiceRole);
+  console.log(`[AI Voice Service] Generating Voice Narration for Slide ${slideIndex + 1} (${selectedVoice.name}, role: ${voiceRole || voiceGender})...`);
   
   const fileName = `slide_${slideIndex + 1}.mp3`;
   const filePath = path.join(outputDir, fileName);
@@ -50,14 +88,13 @@ export async function generateAndSaveSlideVoice({
   const request = {
     input: { ssml: ssmlText },
     voice: {
-      languageCode: lang === 'ar' ? 'ar-XA' : 'en-US',
-      name: lang === 'ar' 
-        ? (voiceGender === 'female' ? 'ar-XA-Chirp3-HD-Aoede' : 'ar-XA-Chirp3-HD-Puck') 
-        : (voiceGender === 'female' ? 'en-US-Chirp3-HD-Aoede' : 'en-US-Chirp3-HD-Puck')
+      languageCode: selectedVoice.languageCode,
+      name: selectedVoice.name
     },
     audioConfig: { 
       audioEncoding: 'MP3',
-      speakingRate: 0.95 // slightly slower for better storytelling pace
+      speakingRate: selectedVoice.speakingRate,
+      pitch: selectedVoice.pitch
     },
     enableTimePointing: ['SSML_MARK']
   };

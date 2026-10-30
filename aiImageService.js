@@ -63,7 +63,9 @@ RULES FOR PROMPT CREATION:
 Slide Number: ${slideIndex + 1}
 Story Title: "${storyTitle}"
 Category: "${category}"
-Slide Text: "${slideText}"
+<untrusted_slide_scene_text>
+${slideText}
+</untrusted_slide_scene_text>
 ${userFeedback ? `User Revision Feedback: "${userFeedback}"` : ''}`;
 
     try {
@@ -73,7 +75,13 @@ ${userFeedback ? `User Revision Feedback: "${userFeedback}"` : ''}`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: systemInstruction }] }],
-          generationConfig: { temperature: 0.25 }
+          generationConfig: { temperature: 0.25 },
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' }
+          ]
         })
       });
 

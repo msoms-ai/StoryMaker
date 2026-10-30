@@ -101,7 +101,8 @@ export async function processStoryGeneration(job, storyId, planData, settings, u
       slideIndex: i, 
       slideText, 
       lang,
-      voiceGender: narratorVoice || 'male'
+      voiceGender: narratorVoice || 'male',
+      voiceRole: currentSlide.voiceRole || currentSlide.speakerRole || null
     });
 
     const encodedFolder = encodeURIComponent(folderName);
