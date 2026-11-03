@@ -44,6 +44,45 @@ const STORIES_DIR = path.join(__dirname, 'STORIES');
 const USERS_DIR = path.join(__dirname, 'USERS');
 const DB_FILE = path.join(STORIES_DIR, 'database.json');
 
+// Automatically repair any legacy WAV audio files with malformed formatTag 0x0000 -> 0x0001 (PCM)
+function repairAllStoryWavHeaders() {
+  try {
+    if (!fs.existsSync(STORIES_DIR)) return;
+    const stories = fs.readdirSync(STORIES_DIR);
+    let repairedCount = 0;
+    for (const storyFolder of stories) {
+      const voiceDir = path.join(STORIES_DIR, storyFolder, 'story_voice');
+      if (fs.existsSync(voiceDir)) {
+        const files = fs.readdirSync(voiceDir);
+        for (const file of files) {
+          if (file.toLowerCase().endsWith('.wav')) {
+            const filePath = path.join(voiceDir, file);
+            try {
+              const stat = fs.statSync(filePath);
+              if (stat.size >= 44) {
+                const buf = fs.readFileSync(filePath);
+                if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WAVE') {
+                  if (buf.readUInt16LE(20) === 0) {
+                    buf.writeUInt16LE(1, 20);
+                    fs.writeFileSync(filePath, buf);
+                    repairedCount++;
+                  }
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    }
+    if (repairedCount > 0) {
+      console.log(`[Server] Automatically repaired ${repairedCount} legacy story WAV audio files.`);
+    }
+  } catch (err) {
+    console.warn('[Server] Notice scanning legacy story WAV files:', err.message);
+  }
+}
+repairAllStoryWavHeaders();
+
 // Serve static assets
 app.use('/STORIES', express.static(STORIES_DIR));
 app.use('/USERS', (req, res, next) => {

@@ -17,32 +17,78 @@ try {
 }
 
 /**
- * Measure audio file duration in seconds using ffprobe
+ * Validate and auto-repair malformed WAV headers (e.g. formatTag=0x0000 -> 0x0001 PCM)
  */
-export function getAudioDuration(filePath) {
+export function repairAndValidateAudio(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size < 44) return null;
+
+    // If WAV file, verify and fix RIFF header format tag
+    if (filePath.toLowerCase().endsWith('.wav')) {
+      const buf = fs.readFileSync(filePath);
+      if (buf.length >= 44 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WAVE') {
+        const formatTag = buf.readUInt16LE(20);
+        if (formatTag === 0) {
+          console.log(`[Video Service] Auto-repaired malformed WAV header (formatTag 0 -> 1) in ${path.basename(filePath)}`);
+          buf.writeUInt16LE(1, 20); // 1 = WAVE_FORMAT_PCM
+          fs.writeFileSync(filePath, buf);
+        }
+      }
+    }
+    return filePath;
+  } catch (err) {
+    console.warn(`[Video Service] Audio header check notice for ${filePath}:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * Probe audio file to verify valid decodable audio stream and get duration
+ */
+export function probeAudio(filePath) {
   return new Promise((resolve) => {
-    if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
-      return resolve(5.0); // Fallback duration if audio is absent
+    const cleanPath = repairAndValidateAudio(filePath);
+    if (!cleanPath) {
+      return resolve({ isValid: false, duration: 5.0 });
     }
 
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
-      if (err || !metadata || !metadata.format || !metadata.format.duration) {
-        console.warn(`[Video Service] ffprobe duration notice for ${path.basename(filePath)}:`, err?.message);
-        return resolve(5.0);
+    ffmpeg.ffprobe(cleanPath, (err, metadata) => {
+      if (err || !metadata || !metadata.streams) {
+        console.warn(`[Video Service] ffprobe cannot parse ${path.basename(cleanPath)}:`, err?.message);
+        return resolve({ isValid: false, duration: 5.0 });
       }
-      const dur = parseFloat(metadata.format.duration);
-      resolve(dur > 0 ? dur : 5.0);
+
+      const audioStream = metadata.streams.find(s => s.codec_type === 'audio');
+      if (!audioStream || !audioStream.codec_name || audioStream.codec_name === 'unknown' || audioStream.codec_name === 'none') {
+        console.warn(`[Video Service] Unsupported audio codec in ${path.basename(cleanPath)}, using silent fallback.`);
+        return resolve({ isValid: false, duration: 5.0 });
+      }
+
+      const dur = parseFloat(metadata.format?.duration || audioStream.duration || 0);
+      resolve({ isValid: true, duration: dur > 0 ? dur : 5.0, codec: audioStream.codec_name });
     });
   });
+}
+
+/**
+ * Measure audio file duration in seconds using ffprobe
+ */
+export async function getAudioDuration(filePath) {
+  const probe = await probeAudio(filePath);
+  return probe.duration;
 }
 
 /**
  * Render a single slide into an MP4 video segment
  */
 function renderSlideSegment({ imagePath, audioPath, duration, outputPath }) {
-  return new Promise((resolve, reject) => {
-    const hasAudio = fs.existsSync(audioPath) && fs.statSync(audioPath).size > 0;
-    
+  return new Promise(async (resolve, reject) => {
+    // Probe audio to check if it has a valid, decodable audio codec
+    const audioProbe = await probeAudio(audioPath);
+    const useRealAudio = audioProbe.isValid;
+
     let command = ffmpeg();
 
     // Input 1: Image looped for duration
@@ -50,8 +96,8 @@ function renderSlideSegment({ imagePath, audioPath, duration, outputPath }) {
       .loop(duration)
       .inputOptions(['-framerate 25']);
 
-    // Input 2: Audio or silent audio fallback
-    if (hasAudio) {
+    // Input 2: Valid Audio file or silent lavfi audio fallback
+    if (useRealAudio) {
       command.input(audioPath);
     } else {
       command.input('anullsrc=channel_layout=stereo:sample_rate=44100')
@@ -142,28 +188,46 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
       const slide = story.slides[i];
       const segmentOutPath = path.join(tempSegmentsDir, `segment_${i}.mp4`);
 
-      // Resolve Image Path
+      // Resolve Image Path (with URL decoding)
       let imgPath = '';
       if (slide.imageFile) {
-        const cleanRelImg = slide.imageFile.replace(/^\/STORIES\/[^\/]+\//, '');
-        imgPath = path.join(storyFolder, cleanRelImg);
+        try {
+          const decoded = decodeURIComponent(slide.imageFile);
+          const cleanRelImg = decoded.replace(/^\/STORIES\/[^\/]+\//, '');
+          imgPath = path.join(storyFolder, cleanRelImg);
+        } catch (e) {
+          const cleanRelImg = slide.imageFile.replace(/^\/STORIES\/[^\/]+\//, '');
+          imgPath = path.join(storyFolder, cleanRelImg);
+        }
       }
       if (!imgPath || !fs.existsSync(imgPath)) {
-        // Fallback search
-        const fallback1 = path.join(storyFolder, 'story_images', `slide_${i + 1}.png`);
-        const fallback2 = path.join(storyFolder, 'story_images', `slide_${i + 1}.jpg`);
-        imgPath = fs.existsSync(fallback1) ? fallback1 : (fs.existsSync(fallback2) ? fallback2 : '');
+        // Fallback search across png, jpg, jpeg, webp
+        for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
+          const candidate = path.join(storyFolder, 'story_images', `slide_${i + 1}.${ext}`);
+          if (fs.existsSync(candidate)) {
+            imgPath = candidate;
+            break;
+          }
+        }
       }
 
-      // Resolve Audio Path
+      // Resolve Audio Path (with URL decoding)
       let audioPath = '';
       if (slide.voiceFile) {
-        const cleanRelVoice = slide.voiceFile.replace(/^\/STORIES\/[^\/]+\//, '');
-        audioPath = path.join(storyFolder, cleanRelVoice);
+        try {
+          const decoded = decodeURIComponent(slide.voiceFile);
+          const cleanRelVoice = decoded.replace(/^\/STORIES\/[^\/]+\//, '');
+          audioPath = path.join(storyFolder, cleanRelVoice);
+        } catch (e) {
+          const cleanRelVoice = slide.voiceFile.replace(/^\/STORIES\/[^\/]+\//, '');
+          audioPath = path.join(storyFolder, cleanRelVoice);
+        }
       }
       if (!audioPath || !fs.existsSync(audioPath)) {
-        const fallbackAudio = path.join(storyFolder, 'story_voice', `slide_${i + 1}.mp3`);
-        audioPath = fs.existsSync(fallbackAudio) ? fallbackAudio : '';
+        // Fallback search across mp3 and wav
+        const candidateMp3 = path.join(storyFolder, 'story_voice', `slide_${i + 1}.mp3`);
+        const candidateWav = path.join(storyFolder, 'story_voice', `slide_${i + 1}.wav`);
+        audioPath = fs.existsSync(candidateMp3) ? candidateMp3 : (fs.existsSync(candidateWav) ? candidateWav : '');
       }
 
       if (!imgPath || !fs.existsSync(imgPath)) {
@@ -171,7 +235,7 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
         continue;
       }
 
-      // Measure audio duration
+      // Measure audio duration (auto-repairing header if needed)
       const duration = await getAudioDuration(audioPath);
       // Extra 0.5s pause between slides for natural storytelling pace
       const slideDuration = Math.max(duration + 0.5, 3.0);
