@@ -376,7 +376,7 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
             ) : (
               <>
                 <Video className="w-5 h-5" />
-                <span>{lang === 'ar' ? 'توليد وتحميل فيديو القصة (MP4)' : 'Generate & Download Story Video (MP4)'}</span>
+                <span>{lang === 'ar' ? 'توليد فيديو سينمائي تفاعلي (MP4)' : 'Generate Cinematic Video (MP4)'}</span>
               </>
             )}
           </button>
@@ -395,8 +395,8 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
           )}
           <p className="text-center text-[11px] text-slate-400 dark:text-slate-500 mt-2">
             {lang === 'ar'
-              ? 'فيديو عالي الدقة Full HD بصوت الرواة والمؤثرات مدمج مع الرسوم في ملف MP4 واحد'
-              : 'Full HD MP4 video with full voiceover narration and slide illustrations combined'}
+              ? 'فيديو سينمائي Full HD بحركات الكاميرا الحية (Ken Burns)، وترجمة تفاعلية لكلمات القصة (Karaoke)، وخاتمة تعليمية ذكية'
+              : 'Cinematic Full HD video with dynamic camera motion (Ken Burns), synchronized karaoke word highlighting, and smart educational outro'}
           </p>
         </div>
 
