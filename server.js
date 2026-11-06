@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { generateAndSaveSlideImage, generateProfileCoverImage, generateCharacterAvatar } from './aiImageService.js';
-import { generateStoryPlanWithGemini, generateStoryTextWithGemini } from './aiTextService.js';
+import { generateStoryPlanWithGemini, generateStoryTextWithGemini, generateStoryQuizWithGemini } from './aiTextService.js';
 import { generateAndSaveSlideVoice } from './aiVoiceService.js';
 import { sendOtpEmail, sendTeacherRequestToAdmin, sendPackagePurchaseEmail, sendFeedbackEmail } from './emailService.js';
 import jwt from 'jsonwebtoken';
@@ -2374,6 +2374,172 @@ app.delete('/api/moderation/stories/:id', authenticateUser, (req, res) => {
 });
 
 // POST /api/stories/:id/progress - Save reader slide completion
+
+// Helper to prepare 10 balanced, randomized quiz questions with shuffled options
+function prepareQuizSession(questionPool) {
+  if (!questionPool || !Array.isArray(questionPool) || questionPool.length === 0) {
+    return [];
+  }
+
+  // Group questions by category for balanced representation
+  const byCategory = {
+    story: [],
+    grammar: [],
+    moral: [],
+    vocabulary: []
+  };
+
+  questionPool.forEach(q => {
+    const cat = byCategory[q.category] ? q.category : 'story';
+    byCategory[cat].push(q);
+  });
+
+  // Shuffle each category array
+  Object.keys(byCategory).forEach(cat => {
+    byCategory[cat].sort(() => 0.5 - Math.random());
+  });
+
+  // Pick target distribution: ~3 story, ~3 vocab, ~2 grammar, ~2 moral
+  const selected = [];
+  const pick = (cat, count) => {
+    const items = byCategory[cat] || [];
+    for (let i = 0; i < count && items.length > 0; i++) {
+      selected.push(items.pop());
+    }
+  };
+
+  pick('story', 3);
+  pick('grammar', 2);
+  pick('moral', 2);
+  pick('vocabulary', 3);
+
+  // If still less than 10, fill from remaining questions
+  if (selected.length < 10) {
+    const remaining = [];
+    Object.values(byCategory).forEach(arr => remaining.push(...arr));
+    remaining.sort(() => 0.5 - Math.random());
+    while (selected.length < 10 && remaining.length > 0) {
+      selected.push(remaining.pop());
+    }
+  }
+
+  // Shuffle the final selected questions
+  selected.sort(() => 0.5 - Math.random());
+
+  // For each question, shuffle options so correctIndex varies
+  return selected.slice(0, 10).map((q, qIdx) => {
+    const optionsWithFlag = (q.options || []).map((opt, i) => ({
+      text: opt,
+      isCorrect: i === q.correctIndex
+    }));
+
+    // Shuffle options
+    optionsWithFlag.sort(() => 0.5 - Math.random());
+    const newCorrectIndex = Math.max(0, optionsWithFlag.findIndex(o => o.isCorrect));
+
+    return {
+      id: q.id || `q_${qIdx + 1}`,
+      category: q.category || 'story',
+      question: q.question,
+      options: optionsWithFlag.map(o => o.text),
+      correctIndex: newCorrectIndex,
+      explanation: q.explanation || ''
+    };
+  });
+}
+
+// GET /api/stories/:id/quiz - Get 10 randomized multiple choice questions
+app.get('/api/stories/:id/quiz', async (req, res) => {
+  const db = readDB();
+  const story = db.stories.find((s) => s.id === req.params.id);
+  if (!story) {
+    return res.status(404).json({ success: false, message: 'Story not found' });
+  }
+
+  try {
+    let pool = story.quizPool;
+
+    // Generate pool if not cached yet
+    if (!pool || !Array.isArray(pool) || pool.length < 8) {
+      const storyTitle = (typeof story.name === 'object' && story.name 
+        ? (story.name[story.lang] || story.name.ar || story.name.en) 
+        : story.name) || story.title;
+
+      pool = await generateStoryQuizWithGemini({
+        storyTitle,
+        storySlides: story.slides,
+        lang: story.lang || 'ar'
+      });
+
+      story.quizPool = pool;
+      writeDB(db);
+    }
+
+    const sessionQuestions = prepareQuizSession(pool);
+    res.json({
+      success: true,
+      storyId: story.id,
+      storyTitle: story.name,
+      lang: story.lang || 'ar',
+      totalQuestions: sessionQuestions.length,
+      questions: sessionQuestions
+    });
+  } catch (err) {
+    console.error('Quiz fetch error:', err);
+    res.status(500).json({ success: false, message: 'Failed to prepare quiz' });
+  }
+});
+
+// POST /api/stories/:id/quiz/submit - Record quiz score and user stats
+app.post('/api/stories/:id/quiz/submit', (req, res) => {
+  const { userId, score, totalQuestions, answers } = req.body;
+  const db = readDB();
+  const story = db.stories.find((s) => s.id === req.params.id);
+
+  if (!story) {
+    return res.status(404).json({ success: false, message: 'Story not found' });
+  }
+
+  const numericScore = typeof score === 'number' ? score : 0;
+  const total = typeof totalQuestions === 'number' ? totalQuestions : 10;
+
+  if (userId) {
+    // Record on story object
+    if (!story.quizAttempts) story.quizAttempts = {};
+    const prevStoryAttempt = story.quizAttempts[userId] || { highestScore: 0, attemptsCount: 0 };
+    story.quizAttempts[userId] = {
+      lastScore: numericScore,
+      highestScore: Math.max(prevStoryAttempt.highestScore || 0, numericScore),
+      lastAttemptAt: new Date().toISOString(),
+      attemptsCount: (prevStoryAttempt.attemptsCount || 0) + 1
+    };
+
+    // Update user profile stats
+    const user = db.users.find(u => u.id === userId);
+    if (user) {
+      if (!user.quizStats) {
+        user.quizStats = { totalTaken: 0, totalPassed: 0, totalPoints: 0 };
+      }
+      user.quizStats.totalTaken = (user.quizStats.totalTaken || 0) + 1;
+      user.quizStats.totalPoints = (user.quizStats.totalPoints || 0) + numericScore;
+      if (numericScore >= 6) {
+        user.quizStats.totalPassed = (user.quizStats.totalPassed || 0) + 1;
+      }
+    }
+
+    writeDB(db);
+  }
+
+  res.json({
+    success: true,
+    score: numericScore,
+    total,
+    passed: numericScore >= 6,
+    percentage: Math.round((numericScore / total) * 100)
+  });
+});
+
+
 app.post('/api/stories/:id/progress', (req, res) => {
   const { currentSlide, completed, userId } = req.body;
   const db = readDB();

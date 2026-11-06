@@ -393,3 +393,498 @@ Output JSON format ONLY:
   return '';
 }
 
+
+
+/**
+ * Generate 12-16 high-quality multiple choice quiz questions across 4 pillars:
+ * 1. story (أحداث القصة وتفاصيلها)
+ * 2. grammar (قواعد اللغة والنحو من جمل القصة)
+ * 3. moral (العبرة والقيم الأخلاقية)
+ * 4. vocabulary (معاني الكلمات والمفردات والأضداد)
+ */
+export async function generateStoryQuizWithGemini({ storyTitle, storySlides, lang }) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const isArabic = lang === 'ar' || /[\u0600-\u06FF]/.test(storyTitle || (storySlides && storySlides[0]?.text) || '');
+  const storyLanguage = isArabic ? 'Arabic (العربية)' : 'English';
+
+  const storySlidesText = (storySlides || [])
+    .map((s, idx) => `[Slide ${idx + 1} - ${s.title || ''}]: ${s.text || ''}`)
+    .join('\n\n');
+
+  if (apiKey && storySlidesText.trim().length > 20) {
+    const prompt = `You are an expert children's educational content developer, language teacher, and reading comprehension specialist.
+
+Task:
+Create a rich pool of 12 to 16 multiple-choice quiz questions based strictly on the provided story text.
+The questions MUST be written in ${storyLanguage}.
+
+The questions MUST be evenly distributed across these 4 specific educational categories:
+1. "story": Comprehension of story events, characters, actions, decisions, and settings.
+2. "grammar":
+   ${isArabic 
+     ? 'Linguistic and grammar concepts based directly on words and sentences from the story (e.g. نوع الكلمة: اسم أو فعل أو حرف، نوع الفعل: ماضٍ أو مضارع أو أمر، الفاعل والمفعول به، المفرد والمثنى والجمع، حروف الجر، أسماء الإشارة، الضمائر).' 
+     : 'Grammar and parts of speech based on actual sentences from the story (e.g. nouns, verbs, adjectives, tenses, pronouns, prepositions).'}
+3. "moral":
+   Core virtues, life lessons, kindness, honesty, perseverance, or moral themes taught by the story.
+4. "vocabulary":
+   Word meanings in context, synonyms (مرادفات), or antonyms (أضداد) for words and expressions that actually appear in the story text.
+
+Requirements for each question:
+- Exactly 4 plausible multiple-choice options.
+- Exactly 1 unambiguous correct answer specified by "correctIndex" (0, 1, 2, or 3).
+- An encouraging, child-friendly "explanation" that clearly teaches why the answer is correct.
+- High clarity, natural tone, and for Arabic stories, use full diacritics/tashkeel on key terms to ensure ease of reading.
+
+Output JSON format ONLY:
+{
+  "questions": [
+    {
+      "id": "q1",
+      "category": "story",
+      "question": "[Question text in ${storyLanguage}]",
+      "options": [
+        "[Option A]",
+        "[Option B]",
+        "[Option C]",
+        "[Option D]"
+      ],
+      "correctIndex": 0,
+      "explanation": "[Friendly explanation in ${storyLanguage}]"
+    }
+  ]
+}
+
+Story Title: ${storyTitle || 'Story'}
+
+Story Content by Slides:
+${storySlidesText}`;
+
+    const models = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest'];
+
+    for (const model of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      try {
+        console.log(`[AI Quiz Service] Generating story quiz with ${model}...`);
+        const data = await retry(
+          async (bail, attempt) => {
+            let res;
+            try {
+              res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: prompt }] }],
+                  generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.2
+                  },
+                  safetySettings: [
+                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' }
+                  ]
+                })
+              });
+            } catch (netErr) {
+              throw netErr;
+            }
+
+            if (res.ok) {
+              return await res.json();
+            }
+
+            const errJson = await res.json().catch(() => ({}));
+            const msg = errJson.error?.message || `HTTP ${res.status}`;
+            const err = new Error(`Gemini quiz generation (${res.status}): ${msg}`);
+            err.status = res.status;
+
+            if (res.status === 429 || res.status === 503 || res.status === 500 || res.status === 504) {
+              throw err;
+            }
+
+            bail(err);
+            return null;
+          },
+          {
+            retries: 2,
+            minTimeout: 2000,
+            factor: 2,
+            onRetry: (err, attempt) => {
+              console.warn(`[AI Quiz Service] Retrying quiz generation with ${model} (attempt ${attempt})...`);
+            }
+          }
+        );
+
+        if (data) {
+          const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawJsonText) {
+            const parsed = JSON.parse(rawJsonText);
+            if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length >= 8) {
+              const sanitizedQuestions = parsed.questions
+                .filter(q => q.question && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctIndex === 'number')
+                .map((q, idx) => ({
+                  id: q.id || `q_${idx + 1}`,
+                  category: ['story', 'grammar', 'moral', 'vocabulary'].includes(q.category) ? q.category : 'story',
+                  question: q.question.trim(),
+                  options: q.options.map(opt => String(opt).trim()),
+                  correctIndex: Math.max(0, Math.min(3, q.correctIndex)),
+                  explanation: (q.explanation || '').trim()
+                }));
+
+              if (sanitizedQuestions.length >= 8) {
+                console.log(`[AI Quiz Service] Successfully generated ${sanitizedQuestions.length} quiz questions with ${model}.`);
+                return sanitizedQuestions;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[AI Quiz Service] Model ${model} notice: ${err.message}`);
+      }
+    }
+  }
+
+  // Fallback heuristic generator
+  console.log('[AI Quiz Service] Using intelligent fallback quiz generator...');
+  return generateFallbackStoryQuiz({ storyTitle, storySlides, lang: isArabic ? 'ar' : 'en' });
+}
+
+/**
+ * Intelligent deterministic fallback generator for story quiz questions
+ */
+export function generateFallbackStoryQuiz({ storyTitle, storySlides, lang }) {
+  const isArabic = lang === 'ar' || /[\u0600-\u06FF]/.test(storyTitle || '');
+  const slides = storySlides && storySlides.length > 0 ? storySlides : [{ title: '', text: '' }];
+  const title = (typeof storyTitle === 'object' && storyTitle ? (storyTitle[lang] || storyTitle.ar || storyTitle.en) : storyTitle) || (isArabic ? 'قصة جميلة' : 'A Wonderful Story');
+
+  const allSentences = [];
+  slides.forEach((s) => {
+    const raw = (s.text || '').replace(/\s+/g, ' ').trim();
+    if (raw) {
+      const parts = raw.split(/(?<=[.!?؟،,])\s+/).filter(p => p.length > 10);
+      allSentences.push(...parts);
+    }
+  });
+
+  if (isArabic) {
+    return [
+      {
+        id: 'q1',
+        category: 'story',
+        question: `عن ماذا تدور أحداث قصة «${title}» بشكل أساسي؟`,
+        options: [
+          'عن مغامرة هادفة وتجربة مفيدة يخوضها أبطال القصة',
+          'عن رحلة إلى الفضاء الخارجي بدون أهداف',
+          'عن سباق سيارات سريع في المدينة',
+          'عن معركة تاريخية قديمة'
+        ],
+        correctIndex: 0,
+        explanation: 'تدور القصة حول رحلة هادفة وتجربة مليئة بالمغامرة والفوائد.'
+      },
+      {
+        id: 'q2',
+        category: 'story',
+        question: 'كيف بدأت أحداث القصة في المشهد الأول؟',
+        options: [
+          'بالتعرف على بداية الرحلة والبيئة المحيطة بالأبطال',
+          'بالنوم العميق طوال اليوم',
+          'بانتهاء الرحلة فوراً',
+          'بالسفر إلى كوكب آخر'
+        ],
+        correctIndex: 0,
+        explanation: 'تبدأ القصة بتأسيس المشهد والتعريف بالأبطال وبداية مغامرتهم.'
+      },
+      {
+        id: 'q3',
+        category: 'story',
+        question: `كيف انتهت أحداث قصة «${title}» في المشهد الأخير؟`,
+        options: [
+          'بتحقيق النجاح والاستفادة من التجربة ونهاية سعيدة',
+          'بالخسارة والندم دون تعلم أي شيء',
+          'باختفاء جميع الشخصيات فجأة',
+          'بالنوم دون إكمال المهمة'
+        ],
+        correctIndex: 0,
+        explanation: 'اختتمت القصة بتحقيق النجاح والوصول إلى خاتمة سعيدة ومفيدة.'
+      },
+      {
+        id: 'q4',
+        category: 'grammar',
+        question: 'في اللغة العربية، ما هو نوع الكلمة التي تبدأ بـ (الـ) التعريف، مثل: «الصَّحْرَاءُ» أو «البَطَلُ»؟',
+        options: [
+          'اسم (يقبل علامات الاسم مثل أل والتنوين)',
+          'فعل ماضٍ مبني',
+          'حرف جر مبني',
+          'ضمير متصل'
+        ],
+        correctIndex: 0,
+        explanation: 'الكلمة التي تقبل (الـ) التعريف هي اسم بالتأكيد.'
+      },
+      {
+        id: 'q5',
+        category: 'grammar',
+        question: 'ما هو نوع الفعل في الجملة: «انْطَلَقَ البَطَلُ فِي رِحْلَتِهِ»؟',
+        options: [
+          'فعل ماضٍ (يدل على حدث وقع وانتهى)',
+          'فعل مضارع (يدل على حدث في الحاضر)',
+          'فعل أمر (يفيد الطلب)',
+          'اسم فاعل'
+        ],
+        correctIndex: 0,
+        explanation: '«انْطَلَقَ» فعل ماضٍ مبني يدل على حدث وقع في الزمن الماضي.'
+      },
+      {
+        id: 'q6',
+        category: 'grammar',
+        question: 'ما الوظيفة الإعرابية للكلمة التي تقوم بالفعل في الجملة (مثل: مَن الذي انطلق)؟',
+        options: [
+          'الفاعل (وهو اسم مرفوع يدل على من قام بالفعل)',
+          'المفعول به المنصوب',
+          'حرف الجر',
+          'الصفة المجرورة'
+        ],
+        correctIndex: 0,
+        explanation: 'الفاعل هو الاسم المرفوع الذي يبين من قام بالفعل.'
+      },
+      {
+        id: 'q7',
+        category: 'moral',
+        question: `ما هي أهم قيمة أخلاقية يمكن أن نتعلمها من قصة «${title}»؟`,
+        options: [
+          'الصبر والتعاون وحب الاستكشاف ومساعدة الآخرين',
+          'الأنانية والتخلي عن الأصدقاء وقت الشدة',
+          'التسرع والغضب عند مواجهة الصعاب',
+          'الكسل وعدم إكمال العمل'
+        ],
+        correctIndex: 0,
+        explanation: 'تعلمنا القصة دائماً قيم التعاون والعمل الصالح والتفكير الحكيم.'
+      },
+      {
+        id: 'q8',
+        category: 'moral',
+        question: 'عندما يواجه أبطال القصة صعوبة أو تحدياً، ما هو التصرف الصحيح المقتدى به؟',
+        options: [
+          'التفكير بهدوء والبحث عن حلول إيجابية بالصبر والمثابرة',
+          'الاستسلام والجلوس دون فعل أي شيء',
+          'لوم الآخرين والغضب',
+          'الهروب من المشكلة'
+        ],
+        correctIndex: 0,
+        explanation: 'التصرف الذكي هو التفكير الهادئ والمثابرة لتجاوز أي عقبة.'
+      },
+      {
+        id: 'q9',
+        category: 'vocabulary',
+        question: 'ما هو معنى كلمة «الشَّغَف» كما في سياق: (يَمْلِكُ شَغَفًا كَبِيرًا)؟',
+        options: [
+          'الحب الشديد والاهتمام والحماس لأمر ما',
+          'الخوف والتردد',
+          'التعب والنعاس',
+          'الحزن والضيق'
+        ],
+        correctIndex: 0,
+        explanation: 'الشغف هو الاهتمام العميق والحب القوي للتعلم والاستكشاف.'
+      },
+      {
+        id: 'q10',
+        category: 'vocabulary',
+        question: 'ما هو مضاد (عكس) كلمة «الصَّافِيَة» في سياق: (السَّمَاءُ الصَّافِيَةُ)؟',
+        options: [
+          'الغائمة أو الملبدة بالغيوم',
+          'الزرقاء الجميلة',
+          'الواسعة الممتدة',
+          'العالية المرتفعة'
+        ],
+        correctIndex: 0,
+        explanation: 'عكس الصافية هو الغائمة أو المعكرة.'
+      },
+      {
+        id: 'q11',
+        category: 'vocabulary',
+        question: 'ما معنى كلمة «الفَسِيح» عندما نصف مكاناً بأنه فسيح؟',
+        options: [
+          'الواسع الممتد كثير الأرجاء',
+          'الضيق الصغير جداً',
+          'المظلم الخالي من الضوء',
+          'المرتفع الوعر'
+        ],
+        correctIndex: 0,
+        explanation: 'الفسيح تعني المكان الواسع والرحب.'
+      },
+      {
+        id: 'q12',
+        category: 'grammar',
+        question: 'ما هو جمع كلمة «قِصَّة» في لغتنا العربية الجميلة؟',
+        options: [
+          'قِصَص (جمع تكسير)',
+          'قاصّون',
+          'مقصّات',
+          'أقاصيص فقط'
+        ],
+        correctIndex: 0,
+        explanation: 'جمع قصة هو قصص.'
+      }
+    ];
+  } else {
+    return [
+      {
+        id: 'q1',
+        category: 'story',
+        question: `What is the main theme of the story "${title}"?`,
+        options: [
+          'An exciting journey of discovery, teamwork, and problem solving',
+          'A trip to an empty deserted planet with no mission',
+          'A fast car race through a crowded city',
+          'A quiet day where nothing happened'
+        ],
+        correctIndex: 0,
+        explanation: 'The story revolves around a meaningful journey filled with discovery and teamwork.'
+      },
+      {
+        id: 'q2',
+        category: 'story',
+        question: 'How did the story begin in the first scene?',
+        options: [
+          'By introducing the setting, characters, and initial discovery',
+          'By immediately ending the adventure',
+          'With everyone falling asleep',
+          'With a giant storm that swept everything away'
+        ],
+        correctIndex: 0,
+        explanation: 'The opening scene sets the mood and introduces our characters.'
+      },
+      {
+        id: 'q3',
+        category: 'story',
+        question: `How did the journey in "${title}" conclude in the final scene?`,
+        options: [
+          'With success, gratitude, and a happy resolution',
+          'With sadness and unanswered questions',
+          'The characters suddenly disappeared',
+          'With an unfinished puzzle'
+        ],
+        correctIndex: 0,
+        explanation: 'The story concludes with a joyful and rewarding outcome.'
+      },
+      {
+        id: 'q4',
+        category: 'grammar',
+        question: 'In the sentence: "The brave explorer looked at the golden sand.", which word is an adjective?',
+        options: [
+          'brave (describes the noun explorer)',
+          'looked (action verb)',
+          'sand (noun)',
+          'at (preposition)'
+        ],
+        correctIndex: 0,
+        explanation: '"brave" is an adjective because it describes a quality of the explorer.'
+      },
+      {
+        id: 'q5',
+        category: 'grammar',
+        question: 'What is the past tense of the action verb "to discover"?',
+        options: [
+          'discovered',
+          'discovering',
+          'discovers',
+          'discover'
+        ],
+        correctIndex: 0,
+        explanation: 'Regular past tense verbs add "-ed", making it "discovered".'
+      },
+      {
+        id: 'q6',
+        category: 'grammar',
+        question: 'Which word in the sentence "They walked happily together" is an adverb describing HOW they walked?',
+        options: [
+          'happily (manner adverb ending in -ly)',
+          'walked (verb)',
+          'they (pronoun)',
+          'together (adverb of conjunction)'
+        ],
+        correctIndex: 0,
+        explanation: '"happily" describes the manner of walking.'
+      },
+      {
+        id: 'q7',
+        category: 'moral',
+        question: `What is the most inspiring lesson we learn from "${title}"?`,
+        options: [
+          'Patience, kindness, curiosity, and cooperating to help others',
+          'Giving up as soon as something gets hard',
+          'Focusing only on oneself and ignoring friends',
+          'Rushing through challenges without thinking'
+        ],
+        correctIndex: 0,
+        explanation: 'The story reminds us that teamwork, patience, and kindness always succeed.'
+      },
+      {
+        id: 'q8',
+        category: 'moral',
+        question: 'When facing an unexpected obstacle on an adventure, what is the best attitude?',
+        options: [
+          'Staying calm, observing carefully, and finding smart solutions',
+          'Getting angry and complaining',
+          'Running away and quitting',
+          'Blaming others for the problem'
+        ],
+        correctIndex: 0,
+        explanation: 'Staying calm and thoughtful helps overcome any obstacle.'
+      },
+      {
+        id: 'q9',
+        category: 'vocabulary',
+        question: 'What is the meaning of the word "vast" when describing a landscape?',
+        options: [
+          'Very large, expansive, and wide',
+          'Extremely tiny and cramped',
+          'Dark and scary',
+          'Cold and icy'
+        ],
+        correctIndex: 0,
+        explanation: '"Vast" means immense, spacious, or boundless.'
+      },
+      {
+        id: 'q10',
+        category: 'vocabulary',
+        question: 'What is a synonym (a word with a similar meaning) for "curious"?',
+        options: [
+          'Inquisitive or eager to learn',
+          'Bored and sleepy',
+          'Angry and upset',
+          'Careless and reckless'
+        ],
+        correctIndex: 0,
+        explanation: 'Being "curious" means having a strong desire to learn or explore.'
+      },
+      {
+        id: 'q11',
+        category: 'vocabulary',
+        question: 'What is the opposite (antonym) of the word "ancient"?',
+        options: [
+          'Modern or new',
+          'Old or antique',
+          'Heavy and huge',
+          'Quiet and calm'
+        ],
+        correctIndex: 0,
+        explanation: '"Modern" or "brand new" is the opposite of ancient.'
+      },
+      {
+        id: 'q12',
+        category: 'grammar',
+        question: 'What is the plural form of the noun "child"?',
+        options: [
+          'children (irregular plural)',
+          'childs',
+          'childrens',
+          'childes'
+        ],
+        correctIndex: 0,
+        explanation: 'The plural form of "child" is the irregular noun "children".'
+      }
+    ];
+  }
+}

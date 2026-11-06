@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import confetti from 'canvas-confetti';
-import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2, Video } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2, Video, HelpCircle, Award } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import EnhancedAudioPlayer from './EnhancedAudioPlayer';
 import ShareStoryModal from './ShareStoryModal';
+import StoryQuizModal from './StoryQuizModal';
 
 export default function StoryReaderPage({ storyId, setCurrentView, setViewingUserId }) {
   const { lang, dir, t } = useLanguage();
@@ -17,6 +18,8 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   const [showToastNotice, setShowToastNotice] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
+  const [userBestQuizScore, setUserBestQuizScore] = useState(null);
   
   const lastSlideTimeRef = useRef(Date.now());
   const maxReachedSlideRef = useRef(0);
@@ -33,6 +36,9 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           const userProg = user ? data.story.userProgress?.[user.id] : null;
           const initialSlide = userProg?.currentSlide ?? data.story.readProgress?.currentSlide ?? 0;
           setCurrentSlideIdx(initialSlide);
+          if (user && data.story.quizAttempts?.[user.id]) {
+            setUserBestQuizScore(data.story.quizAttempts[user.id].highestScore);
+          }
           maxReachedSlideRef.current = initialSlide;
         }
         setLoading(false);
@@ -224,6 +230,58 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
             lang={lang}
           />
         </div>
+
+        {/* Story Quiz CTA Card - Visible only on the Last Slide */}
+        {currentSlideIdx === story.slides.length - 1 && (
+          <div className="w-full max-w-2xl p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 via-indigo-500/10 to-rose-500/10 border-2 border-amber-400/40 dark:border-amber-500/30 backdrop-blur-md shadow-xl text-center space-y-4 animate-scale-in">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/30">
+              <Sparkles className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-story">
+                {t('startQuizCtaTitle')}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-bold max-w-lg mx-auto leading-relaxed">
+                {t('startQuizCtaSub')}
+              </p>
+            </div>
+
+            {/* Badges */}
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-black border border-emerald-500/20">
+                📖 {t('quizPillStory')}
+              </span>
+              <span className="px-3 py-1 rounded-xl bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-xs font-black border border-indigo-500/20">
+                ✍️ {t('quizPillGrammar')}
+              </span>
+              <span className="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-black border border-amber-500/20">
+                💡 {t('quizPillMoral')}
+              </span>
+              <span className="px-3 py-1 rounded-xl bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs font-black border border-rose-500/20">
+                🔍 {t('quizPillVocab')}
+              </span>
+            </div>
+
+            {/* Start Button & Past Score */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                onClick={() => setIsQuizModalOpen(true)}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-black text-sm sm:text-base shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2.5 transition-all hover:scale-105 active:scale-95"
+              >
+                <HelpCircle className="w-5 h-5 text-amber-200" />
+                <span>{userBestQuizScore !== null ? t('retakeQuizBtn') : t('startQuizBtn')}</span>
+              </button>
+
+              {userBestQuizScore !== null && (
+                <div className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-xs font-black">
+                  <Award className="w-4 h-4 text-amber-500" />
+                  <span>{t('previousScoreLabel')} {userBestQuizScore}/10</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
 
