@@ -326,6 +326,14 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
         lang={lang}
       />
 
+      {/* Typeform Story Quiz Modal */}
+      <StoryQuizModal
+        isOpen={isQuizModalOpen}
+        onClose={() => setIsQuizModalOpen(false)}
+        story={story}
+        onRetakeSuccess={(score) => setUserBestQuizScore((prev) => Math.max(prev || 0, score))}
+      />
+
     </div>
   );
 }
