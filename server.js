@@ -368,97 +368,111 @@ function sanitizeUser(user) {
 
 // POST /api/auth/signup
 app.post('/api/auth/signup', async (req, res) => {
-  const { email, password, firstName, lastName, lang = 'ar' } = req.body;
+  try {
+    const { email, password, firstName, lastName, lang = 'ar' } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ success: false, message: 'Email and password are required' });
-  }
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password are required' });
+    }
 
-  // Email format validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return res.status(400).json({ success: false, message: 'Invalid email format' });
-  }
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ success: false, message: 'Invalid email format' });
+    }
 
-  // Strong password constraints: min 8 chars, 1 number, 1 special character
-  const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>_\-=+])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>_\-=+]{8,}$/;
-  if (!passwordRegex.test(password)) {
-    return res.status(400).json({
+    // Strong password constraints: min 8 chars, 1 number, 1 special character
+    const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>_\-=+])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>_\-=+]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long and contain at least one number and one special character'
+      });
+    }
+
+    const db = readDB();
+    const normalizedEmail = email.trim().toLowerCase();
+    let existingUser = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
+
+    if (existingUser && existingUser.isVerified) {
+      return res.status(400).json({ success: false, message: 'This email is already registered and verified. Please log in.' });
+    }
+
+    // Generate 4-digit OTP code (e.g. 4829)
+    const otpCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const otpExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes expiration
+
+    // Create isolated user folder (without @domain.com)
+    const usernamePart = normalizedEmail.split('@')[0].replace(/[^a-z0-9_.]/g, '_');
+    const userFolder = `${usernamePart}_${Date.now() % 10000}`;
+    const userFolderPath = path.join(USERS_DIR, userFolder);
+    if (!fs.existsSync(userFolderPath)) {
+      fs.mkdirSync(userFolderPath, { recursive: true });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+
+    let targetUser;
+    if (existingUser) {
+      // Update unverified user with new credentials and OTP
+      existingUser.passwordHash = passwordHash;
+      existingUser.firstName = firstName || existingUser.firstName || '';
+      existingUser.lastName = lastName || existingUser.lastName || '';
+      existingUser.otpCode = otpCode;
+      existingUser.otpExpiresAt = otpExpiresAt;
+      existingUser.otpAttempts = 0;
+      existingUser.userFolder = existingUser.userFolder || userFolder;
+      targetUser = existingUser;
+    } else {
+      const newUser = {
+        id: `u_${Date.now()}`,
+        email: normalizedEmail,
+        passwordHash,
+        firstName: firstName || '',
+        lastName: lastName || '',
+        role: db.settings.defaultRole || 'Story Reader',
+        isVerified: false,
+        status: 'active',
+        freeStoriesLeft: db.settings.defaultFreeStories !== undefined ? db.settings.defaultFreeStories : 5,
+        userFolder,
+        otpCode,
+        otpExpiresAt,
+        otpAttempts: 0,
+        createdAt: new Date().toISOString(),
+        mobileNumber: '',
+        socialLinks: { instagram: '', linkedin: '', facebook: '' }
+      };
+      db.users.push(newUser);
+      targetUser = newUser;
+    }
+
+    writeDB(db);
+
+    // Dispatch OTP email via SMTP
+    const emailResult = await sendOtpEmail({
+      toEmail: normalizedEmail,
+      otpCode,
+      lang,
+      purpose: 'signup'
+    });
+
+    if (!emailResult.success) {
+      console.warn(`[Auth Signup] Warning: OTP email failed to dispatch to ${normalizedEmail}: ${emailResult.error}`);
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP verification code sent to your email',
+      email: normalizedEmail,
+      otpExpiresInSeconds: 300
+    });
+  } catch (err) {
+    console.error('[Auth Signup Error]:', err);
+    res.status(500).json({
       success: false,
-      message: 'Password must be at least 8 characters long and contain at least one number and one special character'
+      message: 'Server error during registration. Please try again.'
     });
   }
-
-  const db = readDB();
-  const normalizedEmail = email.trim().toLowerCase();
-  let existingUser = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
-
-  if (existingUser && existingUser.isVerified) {
-    return res.status(400).json({ success: false, message: 'This email is already registered and verified. Please log in.' });
-  }
-
-  // Generate 4-digit OTP code (e.g. 4829)
-  const otpCode = Math.floor(1000 + Math.random() * 9000).toString();
-  const otpExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes expiration
-
-  // Create isolated user folder (without @domain.com)
-  const usernamePart = normalizedEmail.split('@')[0].replace(/[^a-z0-9_.]/g, '_');
-  const userFolder = `${usernamePart}_${Date.now() % 10000}`;
-  const userFolderPath = path.join(USERS_DIR, userFolder);
-  if (!fs.existsSync(userFolderPath)) {
-    fs.mkdirSync(userFolderPath, { recursive: true });
-  }
-
-  const passwordHash = bcrypt.hashSync(password, 10);
-
-  if (existingUser) {
-    // Update unverified user with new credentials and OTP
-    existingUser.passwordHash = passwordHash;
-    existingUser.firstName = firstName || existingUser.firstName || '';
-    existingUser.lastName = lastName || existingUser.lastName || '';
-    existingUser.otpCode = otpCode;
-    existingUser.otpExpiresAt = otpExpiresAt;
-    existingUser.userFolder = existingUser.userFolder || userFolder;
-  } else {
-    const newUser = {
-      id: `u_${Date.now()}`,
-      email: normalizedEmail,
-      passwordHash,
-      firstName: firstName || '',
-      lastName: lastName || '',
-      role: db.settings.defaultRole || 'Story Reader',
-      isVerified: false,
-      status: 'active',
-      freeStoriesLeft: db.settings.defaultFreeStories !== undefined ? db.settings.defaultFreeStories : 5,
-      userFolder,
-      otpCode,
-      otpExpiresAt,
-      createdAt: new Date().toISOString(),
-      mobileNumber: '',
-      socialLinks: { instagram: '', linkedin: '', facebook: '' }
-    };
-    db.users.push(newUser);
-  }
-
-  if (user) {
-    user.otpAttempts = 0;
-  }
-  writeDB(db);
-
-  // Dispatch OTP email via SMTP
-  await sendOtpEmail({
-    toEmail: normalizedEmail,
-    otpCode,
-    lang,
-    purpose: 'signup'
-  });
-
-  res.json({
-    success: true,
-    message: 'OTP verification code sent to your email',
-    email: normalizedEmail,
-    otpExpiresInSeconds: 300
-  });
 });
 
 // POST /api/auth/verify-otp
@@ -1316,6 +1330,101 @@ app.post('/api/packages/ziina/webhook', express.json(), async (req, res) => {
     console.error('[Ziina Webhook] Handler error:', err.message);
     // Return 200 so Ziina does not repeatedly retry on client validation errors
     res.status(200).json({ received: true, error: err.message });
+  }
+});
+
+// POST /api/packages/iap/verify - Verify and credit In-App Purchases (iOS StoreKit & Android Play Billing)
+app.post('/api/packages/iap/verify', authenticateUser, async (req, res) => {
+  try {
+    const { productId, purchaseId, verificationData, platform = 'unknown', lang = 'ar' } = req.body;
+
+    if (!productId || !purchaseId) {
+      return res.status(400).json({ success: false, message: 'productId and purchaseId are required' });
+    }
+
+    // Map Store product identifiers to stories count
+    const IAP_PRODUCT_MAP = {
+      'com.msoms.qisas.pack20': { storiesCount: 20, price: 29, name: { ar: 'باقة 20 قصة', en: '20 Stories Package' } },
+      'com.msoms.qisas.pack50': { storiesCount: 50, price: 59, name: { ar: 'باقة 50 قصة', en: '50 Stories Package' } },
+      'com.msoms.qisas.pack100': { storiesCount: 100, price: 99, name: { ar: 'باقة 100 قصة', en: '100 Stories Package' } },
+      'pack_20': { storiesCount: 20, price: 29, name: { ar: 'باقة 20 قصة', en: '20 Stories Package' } },
+      'pack_50': { storiesCount: 50, price: 59, name: { ar: 'باقة 50 قصة', en: '50 Stories Package' } },
+      'pack_100': { storiesCount: 100, price: 99, name: { ar: 'باقة 100 قصة', en: '100 Stories Package' } },
+    };
+
+    const pkgInfo = IAP_PRODUCT_MAP[productId];
+    if (!pkgInfo) {
+      return res.status(404).json({ success: false, message: `Unknown In-App Purchase product ID: ${productId}` });
+    }
+
+    const db = readDB();
+    const user = db.users.find(u => u.id === req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (!db.transactions) db.transactions = [];
+
+    // Idempotency: Avoid double-crediting the same purchaseId/transactionId
+    const existingTxn = db.transactions.find(t => t.id === purchaseId || t.purchaseId === purchaseId);
+    if (existingTxn && existingTxn.status === 'completed') {
+      return res.json({
+        success: true,
+        alreadyProcessed: true,
+        storiesAdded: existingTxn.storiesCount,
+        freeStoriesLeft: user.freeStoriesLeft,
+        user: sanitizeUser(user)
+      });
+    }
+
+    // Credit stories to user
+    user.freeStoriesLeft = (user.freeStoriesLeft || 0) + pkgInfo.storiesCount;
+
+    const packageNameStr = pkgInfo.name[lang] || pkgInfo.name.ar;
+    const newTxn = {
+      id: purchaseId,
+      purchaseId,
+      platform: `iap_${platform}`,
+      productId,
+      userId: user.id,
+      userEmail: user.email,
+      storiesCount: pkgInfo.storiesCount,
+      amount: pkgInfo.price,
+      currency: 'AED',
+      status: 'completed',
+      verificationData: verificationData ? String(verificationData).substring(0, 100) + '...' : null,
+      completedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+
+    db.transactions.unshift(newTxn);
+    writeDB(db);
+
+    console.log(`[IAP] Successfully credited ${pkgInfo.storiesCount} stories to ${user.email} (Purchase: ${purchaseId}, Platform: ${platform})`);
+
+    try {
+      await sendPackagePurchaseEmail({
+        toEmail: user.email,
+        packageName: packageNameStr,
+        storiesAdded: pkgInfo.storiesCount,
+        price: pkgInfo.price,
+        transactionId: purchaseId,
+        lang
+      });
+    } catch (emailErr) {
+      console.warn('[IAP] Notice: confirmation email sending failed:', emailErr.message);
+    }
+
+    return res.json({
+      success: true,
+      storiesAdded: pkgInfo.storiesCount,
+      freeStoriesLeft: user.freeStoriesLeft,
+      transactionId: purchaseId,
+      user: sanitizeUser(user)
+    });
+  } catch (err) {
+    console.error('[IAP Verify] Error:', err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
