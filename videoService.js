@@ -471,8 +471,11 @@ function renderSlideSegment({
 
     // Compose video filter chain
     const filterParts = [motionFilter];
-    if (assRelPath && fs.existsSync(assAbsPath)) {
-      filterParts.push(`ass=${assRelPath}:fontsdir=Fonts`);
+    if (assAbsPath && fs.existsSync(assAbsPath)) {
+      // Escape colons and forward slashes for Windows FFmpeg filter graph
+      const escapedAssPath = path.resolve(assAbsPath).replace(/\\/g, '/').replace(/:/g, '\\:');
+      const escapedFontsDir = path.resolve('Fonts').replace(/\\/g, '/').replace(/:/g, '\\:');
+      filterParts.push(`ass='${escapedAssPath}':fontsdir='${escapedFontsDir}'`);
     }
 
     // Smooth scene transitions: fade-in at start, fade-out at end
@@ -644,8 +647,8 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
 
       // Measure audio duration
       const audioDuration = await getAudioDuration(audioPath);
-      // Give 0.6s breathing room for natural storytelling and smooth cross-slide fade
-      const slideDuration = Math.max(audioDuration + 0.6, 3.5);
+      // Give 0.25s breathing room for natural storytelling and clean cross-slide fade
+      const slideDuration = Math.max(audioDuration + 0.25, 2.5);
 
       const currentProgress = Math.round(10 + (i / totalSlides) * 70);
       onProgress(currentProgress, `Rendering slide ${i + 1} of ${totalSlides} (motion & karaoke subtitles)...`);
@@ -669,18 +672,8 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
       throw new Error('No valid slide video segments could be created.');
     }
 
-    // Render Closing Moral & Question Outro Card
-    onProgress(82, 'Generating interactive moral & reflection outro...');
-    console.log('[Video Service] Rendering closing moral and question outro card...');
-    const outroOutPath = path.join(tempSegmentsDir, `segment_outro.mp4`);
-    await renderOutroSegment({
-      story,
-      outputPath: outroOutPath,
-      tempSubsDir
-    });
-    segmentPaths.push(outroOutPath);
-
-    onProgress(90, 'Stitching animated scenes and outro into final video...');
+    // Direct transition to final video without trailing silent outro
+    onProgress(90, 'Stitching animated scenes into final video...');
     console.log(`[Video Service] Stitching ${segmentPaths.length} video scenes into final MP4...`);
 
     await concatenateSegments(segmentPaths, finalVideoPath);

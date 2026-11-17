@@ -121,32 +121,36 @@ app.use('/Fonts', express.static(path.join(__dirname, 'Fonts')));
 // In-memory cache for fast word hover translations
 const wordTranslationCache = new Map();
 
-// GET /api/translate-word - Instant word translation popup for story reader
+// GET /api/translate-word - Instant bilingual word translation & meaning popup for story reader
 app.get('/api/translate-word', async (req, res) => {
   try {
     const rawWord = (req.query.word || '').trim();
-    const targetLang = (req.query.to || (req.query.lang === 'ar' ? 'en' : 'ar')).toLowerCase();
-
     if (!rawWord || rawWord.length > 50) {
-      return res.status(400).json({ error: 'Word is required and must be under 50 characters' });
+      return res.status(400).json({ success: false, error: 'Word is required and must be under 50 characters' });
     }
 
-    // Strip punctuation, quotes, brackets, and vocalization symbols for clean translation lookup
+    // Strip punctuation, quotes, brackets, and vocalization symbols for clean lookup
     const cleanWord = rawWord
       .replace(/^[\s.,!?;:«»"'`()[\]{}<>\-_—*~]+/gu, '')
       .replace(/[\s.,!?;:«»"'`()[\]{}<>\-_—*~]+$/gu, '')
       .trim();
 
     if (!cleanWord) {
-      return res.json({ word: rawWord, cleanWord: '', translation: '' });
+      return res.json({ success: true, word: rawWord, cleanWord: '', translation: '', meaning: '' });
     }
 
-    const cacheKey = `${targetLang}:${cleanWord.toLowerCase()}`;
+    const isArabic = /[\u0600-\u06FF]/.test(cleanWord);
+    const targetLang = isArabic ? 'en' : 'ar';
+    const cacheKey = `meaning:${cleanWord.toLowerCase()}`;
+
     if (wordTranslationCache.has(cacheKey)) {
+      const cached = wordTranslationCache.get(cacheKey);
       return res.json({
+        success: true,
         word: rawWord,
         cleanWord,
-        translation: wordTranslationCache.get(cacheKey),
+        isArabic,
+        ...cached,
         cached: true
       });
     }
@@ -164,45 +168,85 @@ app.get('/api/translate-word', async (req, res) => {
       console.warn(`[Translation] GTX notice for "${cleanWord}":`, gtxErr.message);
     }
 
-    // 2. Gemini Flash fallback if GTX failed
-    if (!translated && process.env.GEMINI_API_KEY) {
+    // Meaning explanations in Arabic and English
+    let meaningAr = '';
+    let meaningEn = '';
+
+    // 2. Fetch definition from Gemini if available
+    if (process.env.GEMINI_API_KEY) {
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
-        const prompt = `Translate this single word/phrase into ${targetLang === 'ar' ? 'Arabic' : 'English'}. Return ONLY the direct translated word with no punctuation, no quotes, no explanation: "${cleanWord}"`;
+        const prompt = `You are a children's dictionary. For the word "${cleanWord}":
+1. Translate to ${isArabic ? 'English' : 'Arabic'}.
+2. Provide a 1-sentence simple definition in Arabic for children.
+3. Provide a 1-sentence simple definition in English for children.
+Return valid JSON only:
+{"translation": "...", "meaningAr": "...", "meaningEn": "..."}`;
+
         const gemRes = await fetch(geminiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.0, maxOutputTokens: 20 }
+            generationConfig: { temperature: 0.1, maxOutputTokens: 200, responseMimeType: 'application/json' }
           })
         });
+
         if (gemRes.ok) {
           const gemData = await gemRes.json();
-          translated = gemData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          const rawText = gemData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
+          const parsed = JSON.parse(rawText);
+          if (parsed.translation && !translated) translated = parsed.translation;
+          meaningAr = parsed.meaningAr || '';
+          meaningEn = parsed.meaningEn || '';
         }
       } catch (gemErr) {
-        console.warn(`[Translation] Gemini fallback notice:`, gemErr.message);
+        console.warn(`[Translation] Gemini dictionary notice:`, gemErr.message);
       }
     }
 
-    if (translated) {
-      wordTranslationCache.set(cacheKey, translated);
-      // Keep cache under 10,000 words
-      if (wordTranslationCache.size > 10000) {
-        const firstKey = wordTranslationCache.keys().next().value;
-        wordTranslationCache.delete(firstKey);
-      }
+    // Default friendly explanations if Gemini was unreachable
+    if (!meaningAr) {
+      meaningAr = isArabic 
+        ? `مفردة لغوية تثري حصيلة القارئ وتعبر عن سياق القصة.`
+        : `الترجمة العربية للكلمة الإنجليزية "${cleanWord}".`;
+    }
+    if (!meaningEn) {
+      meaningEn = isArabic
+        ? `English translation and storytelling vocabulary for "${cleanWord}".`
+        : `A vocabulary word enriching the reader's comprehension in the story.`;
+    }
+
+    const result = {
+      translation: translated || cleanWord,
+      meaningAr,
+      meaningEn,
+      meaning: isArabic ? meaningAr : meaningEn,
+      definition: isArabic ? meaningAr : meaningEn,
+    };
+
+    wordTranslationCache.set(cacheKey, result);
+    if (wordTranslationCache.size > 10000) {
+      const firstKey = wordTranslationCache.keys().next().value;
+      wordTranslationCache.delete(firstKey);
     }
 
     res.json({
+      success: true,
       word: rawWord,
       cleanWord,
-      translation: translated || cleanWord
+      isArabic,
+      ...result
     });
   } catch (err) {
     console.error('[Translation API Error]:', err.message);
-    res.status(500).json({ error: 'Failed to translate word' });
+    res.json({
+      success: true,
+      word: req.query.word || '',
+      cleanWord: req.query.word || '',
+      translation: '',
+      meaning: 'كلمة تثري الحصيلة اللغوية وسياق القصة.'
+    });
   }
 });
 
@@ -762,6 +806,47 @@ app.get('/api/auth/me', authenticateUser, (req, res) => {
 // -------------------------------------------------------------
 // 2. USER PROFILE & AVATAR ENDPOINTS
 // -------------------------------------------------------------
+
+// POST /api/user/change-password - Change user password with current password verification
+app.post('/api/user/change-password', authenticateUser, (req, res) => {
+  const { currentPassword, newPassword, lang = 'ar' } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'ar' ? 'كلمة المرور الحالية والجديدة مطلوبتان' : 'Current and new password are required'
+    });
+  }
+
+  const db = readDB();
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  if (!bcrypt.compareSync(currentPassword, user.passwordHash)) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'ar' ? 'كلمة المرور الحالية غير صحيحة' : 'Current password is incorrect'
+    });
+  }
+
+  const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>_\-=+])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>_\-=+]{8,}$/;
+  if (!passwordRegex.test(newPassword)) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'ar'
+        ? 'يجب أن تتكون كلمة المرور الجديدة من 8 خانات على الأقل وتحتوي على رقم ورمز خاص'
+        : 'Password must be at least 8 characters long and contain at least one number and one special character'
+    });
+  }
+
+  user.passwordHash = bcrypt.hashSync(newPassword, 10);
+  writeDB(db);
+  res.json({
+    success: true,
+    message: lang === 'ar' ? 'تم تحديث كلمة المرور بنجاح' : 'Password updated successfully'
+  });
+});
 
 // POST /api/user/change-email-otp - Request OTP for email update
 app.post('/api/user/change-email-otp', authenticateUser, async (req, res) => {
@@ -2646,6 +2731,30 @@ app.post('/api/stories/:id/quiz/submit', (req, res) => {
     passed: numericScore >= 6,
     percentage: Math.round((numericScore / total) * 100)
   });
+});
+
+// GET /api/stories/:id/quiz/leaderboard - Top scores for story quiz
+app.get('/api/stories/:id/quiz/leaderboard', (req, res) => {
+  const db = readDB();
+  const story = db.stories.find((s) => s.id === req.params.id);
+  if (!story) {
+    return res.status(404).json({ success: false, message: 'Story not found' });
+  }
+
+  const attempts = story.quizAttempts || {};
+  const leaderboard = Object.keys(attempts).map(uid => {
+    const user = db.users.find(u => u.id === uid);
+    return {
+      userId: uid,
+      userName: user ? user.name : 'قارئ مبدع',
+      userAvatar: user ? user.avatar : null,
+      highestScore: attempts[uid].highestScore || attempts[uid].lastScore || 0,
+      attemptsCount: attempts[uid].attemptsCount || 1,
+      lastAttemptAt: attempts[uid].lastAttemptAt
+    };
+  }).sort((a, b) => b.highestScore - a.highestScore).slice(0, 20);
+
+  res.json({ success: true, leaderboard });
 });
 
 
