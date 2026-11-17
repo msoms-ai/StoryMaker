@@ -252,8 +252,10 @@ export function startWorker(generateLogicCallback) {
     videoWorker.on('completed', (job, returnvalue) => {
       const sId = job?.data?.story?.id || job?.data?.story?.folderName;
       const fName = job?.data?.story?.folderName;
+      const cleanId = String(sId || '').replace(/^\[ID#/, '').replace(/\]$/, '').trim();
       const payload = { status: 'completed', progress: 100, stage: 'done', videoUrl: returnvalue };
       if (sId) jobVideoStatusStore.set(sId, payload);
+      if (cleanId) jobVideoStatusStore.set(cleanId, payload);
       if (fName) jobVideoStatusStore.set(fName, payload);
       console.log(`[BullMQ Video Worker] Video completed for ${sId}: ${returnvalue}`);
     });
@@ -261,10 +263,16 @@ export function startWorker(generateLogicCallback) {
     videoWorker.on('failed', (job, err) => {
       const sId = job?.data?.story?.id || job?.data?.story?.folderName;
       const fName = job?.data?.story?.folderName;
+      const cleanId = String(sId || '').replace(/^\[ID#/, '').replace(/\]$/, '').trim();
       const payload = { status: 'failed', error: err.message };
       if (sId) jobVideoStatusStore.set(sId, payload);
+      if (cleanId) jobVideoStatusStore.set(cleanId, payload);
       if (fName) jobVideoStatusStore.set(fName, payload);
       console.error(`[BullMQ Video Worker] Video failed for ${sId}:`, err.message);
+    });
+
+    videoWorker.on('error', (err) => {
+      console.error('[BullMQ Video Worker] Worker error:', err.message);
     });
   } catch (err) {
     console.warn('[Queue] Video worker init notice:', err.message);
@@ -381,12 +389,14 @@ async function processLocalVideoQueue() {
   localVideoWorkerRunning++;
   const { story, storiesDir, motionMode } = nextJob;
   const storyId = story.id || story.folderName;
+  const cleanId = String(story.id || '').replace(/^\[ID#/, '').replace(/\]$/, '').trim();
   console.log(`[Local Video Worker] Rendering story video for: ${storyId} (motionMode: ${motionMode || 'kenburns'})`);
 
   try {
     const updateProgress = (progress, stage) => {
       const payload = { status: 'processing', progress, stage, storyId };
       jobVideoStatusStore.set(storyId, payload);
+      if (cleanId) jobVideoStatusStore.set(cleanId, payload);
       if (story.folderName) jobVideoStatusStore.set(story.folderName, payload);
     };
 
@@ -410,12 +420,14 @@ async function processLocalVideoQueue() {
 
     const completedPayload = { status: 'completed', progress: 100, stage: 'done', videoUrl };
     jobVideoStatusStore.set(storyId, completedPayload);
+    if (cleanId) jobVideoStatusStore.set(cleanId, completedPayload);
     if (story.folderName) jobVideoStatusStore.set(story.folderName, completedPayload);
     console.log(`[Local Video Worker] Completed video for ${storyId}: ${videoUrl}`);
   } catch (err) {
     console.error(`[Local Video Worker] Failed video for story ${storyId}:`, err);
     const failedPayload = { status: 'failed', error: err.message };
     jobVideoStatusStore.set(storyId, failedPayload);
+    if (cleanId) jobVideoStatusStore.set(cleanId, failedPayload);
     if (story.folderName) jobVideoStatusStore.set(story.folderName, failedPayload);
   } finally {
     localVideoWorkerRunning--;
@@ -425,8 +437,10 @@ async function processLocalVideoQueue() {
 
 export async function addVideoJob(story, storiesDir, motionMode = 'kenburns') {
   const storyId = story.id || story.folderName;
-  const initialStatus = { status: 'queued', progress: 0, stage: 'Queued for video rendering...', storyId };
+  const cleanId = String(story.id || '').replace(/^\[ID#/, '').replace(/\]$/, '').trim();
+  const initialStatus = { status: 'queued', progress: 5, stage: 'Queued for video rendering...', storyId };
   jobVideoStatusStore.set(storyId, initialStatus);
+  if (cleanId) jobVideoStatusStore.set(cleanId, initialStatus);
   if (story.folderName) jobVideoStatusStore.set(story.folderName, initialStatus);
 
   if (isRedisConnected) {
@@ -452,43 +466,87 @@ export async function addVideoJob(story, storiesDir, motionMode = 'kenburns') {
 export async function getVideoJobStatus(queryId, storiesDir) {
   if (!queryId) return { success: false, message: 'Invalid query ID' };
 
+  const rawQuery = String(queryId).trim();
+  const cleanQuery = rawQuery.replace(/^\[ID#/, '').replace(/\]$/, '').trim();
+
   // 1. Direct check in jobVideoStatusStore
-  if (jobVideoStatusStore.has(queryId)) {
-    return { success: true, ...jobVideoStatusStore.get(queryId) };
+  if (jobVideoStatusStore.has(rawQuery)) {
+    return { success: true, ...jobVideoStatusStore.get(rawQuery) };
+  }
+  if (cleanQuery && jobVideoStatusStore.has(cleanQuery)) {
+    return { success: true, ...jobVideoStatusStore.get(cleanQuery) };
   }
 
   // 2. Fuzzy match in jobVideoStatusStore
   for (const [key, val] of jobVideoStatusStore.entries()) {
-    if (key === queryId || key.includes(queryId) || queryId.includes(key)) {
+    if (
+      key === rawQuery ||
+      key === cleanQuery ||
+      key.includes(rawQuery) ||
+      rawQuery.includes(key) ||
+      (val.storyId && (val.storyId === rawQuery || val.storyId === cleanQuery || rawQuery.includes(val.storyId)))
+    ) {
       return { success: true, ...val };
     }
   }
 
-  // 3. Check STORIES/database.json or video file on disk
+  // 3. Query Redis BullMQ if available
+  if (isRedisConnected) {
+    try {
+      const cleanJobId = `video_${cleanQuery.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      const job = await videoQueue.getJob(cleanJobId);
+      if (job) {
+        const state = await job.getState();
+        if (state === 'completed') {
+          const result = { success: true, status: 'completed', progress: 100, videoUrl: job.returnvalue, stage: 'done' };
+          jobVideoStatusStore.set(rawQuery, result);
+          return result;
+        }
+        if (state === 'failed') {
+          const result = { success: true, status: 'failed', error: job.failedReason };
+          jobVideoStatusStore.set(rawQuery, result);
+          return result;
+        }
+        if (state === 'active' || state === 'waiting' || state === 'delayed') {
+          const progressVal = typeof job.progress === 'number' ? job.progress : (job.progress?.progress || 10);
+          const stageVal = (job.progress && typeof job.progress === 'object' && job.progress.stage) ? job.progress.stage : 'Rendering video...';
+          const result = { success: true, status: 'processing', progress: progressVal, stage: stageVal };
+          jobVideoStatusStore.set(rawQuery, result);
+          return result;
+        }
+      }
+    } catch (err) {
+      console.warn(`[Video Queue] Error querying video job ${rawQuery} from Redis:`, err?.message || err);
+    }
+  }
+
+  // 4. Check STORIES/database.json or video file on disk
   try {
     const sDir = storiesDir || path.join(process.cwd(), 'STORIES');
     const dbFile = path.join(sDir, 'database.json');
     if (fs.existsSync(dbFile)) {
       const db = JSON.parse(fs.readFileSync(dbFile, 'utf8'));
       const dbStory = (db.stories || []).find(s => 
-        s.id === queryId || 
-        s.folderName === queryId || 
-        (s.folderName && s.folderName.includes(queryId)) ||
-        (s.id && queryId.includes(s.id))
+        s.id === rawQuery || 
+        s.folderName === rawQuery || 
+        (cleanQuery && (s.id === cleanQuery || s.id?.replace(/^\[ID#/, '').replace(/\]$/, '') === cleanQuery)) ||
+        (s.folderName && s.folderName.includes(rawQuery)) ||
+        (cleanQuery && s.folderName && s.folderName.includes(cleanQuery))
       );
       if (dbStory) {
         // Check if video file actually exists on disk
-        const videoDiskPath = path.join(sDir, dbStory.folderName, 'story_video.mp4');
+        const safeFolder = path.basename(dbStory.folderName);
+        const videoDiskPath = path.join(sDir, safeFolder, 'story_video.mp4');
         if (fs.existsSync(videoDiskPath) && fs.statSync(videoDiskPath).size > 1000) {
-          const videoUrl = dbStory.videoUrl || `/STORIES/${encodeURIComponent(dbStory.folderName)}/story_video.mp4`;
+          const videoUrl = dbStory.videoUrl || `/STORIES/${encodeURIComponent(safeFolder)}/story_video.mp4`;
           const result = { success: true, status: 'completed', progress: 100, videoUrl };
-          jobVideoStatusStore.set(queryId, result);
+          jobVideoStatusStore.set(rawQuery, result);
           return result;
         }
       }
     }
   } catch (err) {
-    console.warn(`[Video Queue] Error reading database for story ${queryId}:`, err?.message || err);
+    console.warn(`[Video Queue] Error reading database for story ${rawQuery}:`, err?.message || err);
   }
 
   return { success: false, status: 'idle', message: 'No video generation active' };

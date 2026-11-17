@@ -2381,12 +2381,33 @@ app.post('/api/stories/:id/status', authenticateUser, (req, res) => {
 // POST /api/stories/:id/generate-video - Start or return background MP4 video rendering
 app.post('/api/stories/:id/generate-video', async (req, res) => {
   try {
-    const { id } = req.params;
+    const rawId = req.params.id || '';
+    let decodedId = rawId;
+    try {
+      decodedId = decodeURIComponent(rawId).trim();
+    } catch (e) {
+      decodedId = rawId.trim();
+    }
+    const cleanId = decodedId.replace(/^\[ID#/, '').replace(/\]$/, '').trim();
+
     const db = readDB();
-    const story = (db.stories || []).find(s => s.id === id || s.folderName === id);
+    const story = (db.stories || []).find(s => {
+      if (!s) return false;
+      const sId = (s.id || '').trim();
+      const sCleanId = sId.replace(/^\[ID#/, '').replace(/\]$/, '').trim();
+      const sFolder = (s.folderName || '').trim();
+      return (
+        sId === decodedId ||
+        sFolder === decodedId ||
+        sId === rawId ||
+        sFolder === rawId ||
+        (cleanId && (sCleanId === cleanId || sFolder.includes(cleanId))) ||
+        (decodedId && sFolder.includes(decodedId))
+      );
+    });
 
     if (!story) {
-      return res.status(404).json({ success: false, message: 'Story not found' });
+      return res.status(404).json({ success: false, message: `Story not found for identifier: ${decodedId}` });
     }
 
     // Check if video file already exists on disk
@@ -2403,7 +2424,7 @@ app.post('/api/stories/:id/generate-video', async (req, res) => {
     }
 
     // Check if already generating
-    const currentStatus = await getVideoJobStatus(id, STORIES_DIR);
+    const currentStatus = await getVideoJobStatus(story.id || decodedId, STORIES_DIR);
     if (currentStatus.status === 'processing' || currentStatus.status === 'queued') {
       return res.json(currentStatus);
     }
@@ -2428,8 +2449,14 @@ app.post('/api/stories/:id/generate-video', async (req, res) => {
 // GET /api/stories/:id/video-status - Poll video generation progress
 app.get('/api/stories/:id/video-status', async (req, res) => {
   try {
-    const { id } = req.params;
-    const status = await getVideoJobStatus(id, STORIES_DIR);
+    const rawId = req.params.id || '';
+    let decodedId = rawId;
+    try {
+      decodedId = decodeURIComponent(rawId).trim();
+    } catch (e) {
+      decodedId = rawId.trim();
+    }
+    const status = await getVideoJobStatus(decodedId, STORIES_DIR);
     res.json(status);
   } catch (err) {
     console.error('[Video Status API Error]:', err.message);

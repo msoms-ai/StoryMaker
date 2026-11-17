@@ -54,12 +54,26 @@ export function repairAndValidateAudio(filePath) {
  */
 export function probeAudio(filePath) {
   return new Promise((resolve) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        console.warn(`[Video Service] ffprobe timed out for ${filePath}, using fallback.`);
+        resolve({ isValid: false, duration: 5.0 });
+      }
+    }, 3500);
+
     const cleanPath = repairAndValidateAudio(filePath);
     if (!cleanPath) {
+      clearTimeout(timer);
+      resolved = true;
       return resolve({ isValid: false, duration: 5.0 });
     }
 
     ffmpeg.ffprobe(cleanPath, (err, metadata) => {
+      if (resolved) return;
+      clearTimeout(timer);
+      resolved = true;
       if (err || !metadata || !metadata.streams) {
         console.warn(`[Video Service] ffprobe cannot parse ${path.basename(cleanPath)}:`, err?.message);
         return resolve({ isValid: false, duration: 5.0 });
@@ -230,18 +244,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 /**
  * 5 Dynamic Ken Burns Motion Presets (Pan, Zoom, Tilt)
+ * Optimized resolution (2400x1350) provides full 1080p native fidelity with 3x faster rendering
  */
 const KEN_BURNS_PRESETS = [
   // Preset 0: Smooth Zoom In towards center
-  (tf) => `scale=3840:2160,zoompan=z='min(zoom+0.0015,1.18)':d=${tf}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
+  (tf) => `scale=2400:1350,zoompan=z='min(zoom+0.0015,1.18)':d=${tf}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
   // Preset 1: Cinematic Horizontal Pan from Left to Right
-  (tf) => `scale=3840:2160,zoompan=z='1.12':d=${tf}:x='(iw-iw/zoom)*(on/${tf})':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
+  (tf) => `scale=2400:1350,zoompan=z='1.12':d=${tf}:x='(iw-iw/zoom)*(on/${tf})':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
   // Preset 2: Smooth Zoom Out from Close-Up to Wide
-  (tf) => `scale=3840:2160,zoompan=z='max(1.18-(on/${tf})*0.18,1.0)':d=${tf}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
+  (tf) => `scale=2400:1350,zoompan=z='max(1.18-(on/${tf})*0.18,1.0)':d=${tf}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
   // Preset 3: Cinematic Horizontal Pan from Right to Left
-  (tf) => `scale=3840:2160,zoompan=z='1.12':d=${tf}:x='(iw-iw/zoom)*(1-on/${tf})':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
+  (tf) => `scale=2400:1350,zoompan=z='1.12':d=${tf}:x='(iw-iw/zoom)*(1-on/${tf})':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
   // Preset 4: Dynamic Tilt Up from Bottom to Top
-  (tf) => `scale=3840:2160,zoompan=z='1.12':d=${tf}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-on/${tf})':s=1920x1080:fps=25`
+  (tf) => `scale=2400:1350,zoompan=z='1.12':d=${tf}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-on/${tf})':s=1920x1080:fps=25`
 ];
 
 /**
@@ -429,7 +444,8 @@ function renderSlideSegment({
   outputPath,
   presetIndex = 0,
   tempSubsDir,
-  motionVideoClipPath = null
+  motionVideoClipPath = null,
+  onSlideProgress = null
 }) {
   return new Promise(async (resolve, reject) => {
     // Probe audio to check if it has a valid, decodable audio stream
@@ -502,7 +518,8 @@ function renderSlideSegment({
       .outputOptions([
         '-vf', vfChain,
         '-c:v libx264',
-        '-preset fast',
+        '-preset veryfast',
+        '-threads 0',
         '-c:a aac',
         '-b:a 128k',
         '-t', `${duration}`,
@@ -511,6 +528,23 @@ function renderSlideSegment({
       ])
       .duration(duration)
       .output(outputPath)
+      .on('progress', (p) => {
+        if (typeof onSlideProgress === 'function' && p) {
+          let fraction = 0;
+          if (typeof p.percent === 'number' && p.percent > 0) {
+            fraction = Math.min(1, p.percent / 100);
+          } else if (p.timemark && duration > 0) {
+            const parts = p.timemark.split(':');
+            if (parts.length === 3) {
+              const sec = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+              fraction = Math.min(1, Math.max(0, sec / duration));
+            }
+          }
+          if (fraction > 0) {
+            onSlideProgress(fraction);
+          }
+        }
+      })
       .on('end', () => {
         if (assAbsPath) {
           try { fs.unlinkSync(assAbsPath); } catch (e) {}
@@ -666,12 +700,13 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
       // Give 0.25s breathing room for natural storytelling and clean cross-slide fade
       const slideDuration = Math.max(audioDuration + 0.25, 2.5);
 
-      const currentProgress = Math.round(10 + (i / totalSlides) * 70);
+      const slideStartPct = 10 + (i / totalSlides) * 75;
+      const slideSpanPct = (1 / totalSlides) * 75;
 
       // Attempt Google Veo Motion generation when motionMode === 'veo'
       let motionVideoClipPath = null;
       if (effectiveMotionMode === 'veo') {
-        onProgress(currentProgress, `Generating Veo motion for slide ${i + 1} of ${totalSlides}...`);
+        onProgress(Math.round(slideStartPct), `Generating Veo motion for slide ${i + 1} of ${totalSlides}...`);
         const tempMotionPath = path.join(tempSegmentsDir, `veo_motion_${i}.mp4`);
         try {
           const veoRes = await generateVeoMotionClip({
@@ -694,11 +729,27 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
         }
       }
 
-      onProgress(currentProgress, `Rendering slide ${i + 1} of ${totalSlides} (motion & karaoke subtitles)...`);
+      const handleSlideFrameProgress = (fraction) => {
+        const framePct = Math.min(88, Math.round(slideStartPct + fraction * slideSpanPct));
+        const subPct = Math.round(fraction * 100);
+        onProgress(framePct, `جاري معالجة المشهد ${i + 1} من ${totalSlides}... (${subPct}%)`);
+      };
+
+      onProgress(Math.round(slideStartPct), `جاري معالجة المشهد ${i + 1} من ${totalSlides}... (0%)`);
       console.log(`[Video Service] Rendering slide ${i + 1}/${totalSlides} (duration: ${slideDuration.toFixed(2)}s, mode: ${motionVideoClipPath ? 'veo' : `kenburns (preset ${i % KEN_BURNS_PRESETS.length})`})...`);
 
       await renderSlideSegment({
         imagePath: imgPath,
+        audioPath,
+        slideText: slide.text || '',
+        timepoints,
+        duration: slideDuration,
+        outputPath: segmentOutPath,
+        presetIndex: i,
+        tempSubsDir,
+        motionVideoClipPath,
+        onSlideProgress: handleSlideFrameProgress
+      });
         audioPath,
         slideText: slide.text || '',
         timepoints,

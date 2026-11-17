@@ -26,15 +26,15 @@ try {
  */
 export const KEN_BURNS_PRESETS = [
   // Preset 0: Smooth Zoom In towards center
-  (tf) => `scale=3840:2160,zoompan=z='min(zoom+0.0015,1.18)':d=${tf}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
+  (tf) => `scale=2400:1350,zoompan=z='min(zoom+0.0015,1.18)':d=${tf}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
   // Preset 1: Cinematic Horizontal Pan from Left to Right
-  (tf) => `scale=3840:2160,zoompan=z='1.12':d=${tf}:x='(iw-iw/zoom)*(on/${tf})':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
+  (tf) => `scale=2400:1350,zoompan=z='1.12':d=${tf}:x='(iw-iw/zoom)*(on/${tf})':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
   // Preset 2: Smooth Zoom Out from Close-Up to Wide
-  (tf) => `scale=3840:2160,zoompan=z='max(1.18-(on/${tf})*0.18,1.0)':d=${tf}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
+  (tf) => `scale=2400:1350,zoompan=z='max(1.18-(on/${tf})*0.18,1.0)':d=${tf}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
   // Preset 3: Cinematic Horizontal Pan from Right to Left
-  (tf) => `scale=3840:2160,zoompan=z='1.12':d=${tf}:x='(iw-iw/zoom)*(1-on/${tf})':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
+  (tf) => `scale=2400:1350,zoompan=z='1.12':d=${tf}:x='(iw-iw/zoom)*(1-on/${tf})':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`,
   // Preset 4: Dynamic Tilt Up from Bottom to Top
-  (tf) => `scale=3840:2160,zoompan=z='1.12':d=${tf}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-on/${tf})':s=1920x1080:fps=25`
+  (tf) => `scale=2400:1350,zoompan=z='1.12':d=${tf}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-on/${tf})':s=1920x1080:fps=25`
 ];
 
 /**
@@ -373,8 +373,8 @@ export async function generateVeoMotionClip({
           const opData = await pollVeoOperation({
             operationName,
             apiKey,
-            maxWaitMs: 180000,
-            pollIntervalMs: 5000
+            maxWaitMs: 35000,
+            pollIntervalMs: 4000
           });
 
           await saveGeneratedVideoFile({ opData, apiKey, outputPath });

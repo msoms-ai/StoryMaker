@@ -23,14 +23,17 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
     if (!isOpen || !story) return;
     const storyKey = story.id || story.folderName;
     fetch(`/api/stories/${encodeURIComponent(storyKey)}/video-status`)
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : null)
       .then(data => {
+        if (!data) return;
         if (data.status === 'completed' && data.videoUrl) {
           setVideoUrl(data.videoUrl);
           setIsVideoRendering(false);
+          setVideoProgress(100);
         } else if (data.status === 'processing' || data.status === 'queued') {
           setIsVideoRendering(true);
-          setVideoProgress(data.progress || 10);
+          const p = typeof data.progress === 'number' ? data.progress : 10;
+          setVideoProgress(Math.max(5, p));
           setVideoStage(data.stage || '');
           startPollingVideo(storyKey);
         }
@@ -44,9 +47,18 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
 
   const startPollingVideo = (storyKey) => {
     if (videoPollIntervalRef.current) clearInterval(videoPollIntervalRef.current);
+    let consecutiveIdleOrErrors = 0;
     videoPollIntervalRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/stories/${encodeURIComponent(storyKey)}/video-status`);
+        if (!res.ok) {
+          consecutiveIdleOrErrors++;
+          if (consecutiveIdleOrErrors >= 8) {
+            clearInterval(videoPollIntervalRef.current);
+            setIsVideoRendering(false);
+          }
+          return;
+        }
         const data = await res.json();
         if (data.status === 'completed' && data.videoUrl) {
           clearInterval(videoPollIntervalRef.current);
@@ -54,15 +66,30 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
           setIsVideoRendering(false);
           setVideoProgress(100);
         } else if (data.status === 'processing' || data.status === 'queued') {
-          setVideoProgress(data.progress || 15);
-          setVideoStage(data.stage || '');
+          consecutiveIdleOrErrors = 0;
+          const p = typeof data.progress === 'number' ? data.progress : 10;
+          setVideoProgress(Math.max(5, p));
+          if (data.stage) setVideoStage(data.stage);
         } else if (data.status === 'failed') {
           clearInterval(videoPollIntervalRef.current);
           setIsVideoRendering(false);
           alert(lang === 'ar' ? 'عذراً، فشل توليد الفيديو: ' + (data.error || 'خطأ غير معروف') : 'Failed to generate video: ' + (data.error || 'Unknown error'));
+        } else {
+          // Status is 'idle' or unknown
+          consecutiveIdleOrErrors++;
+          if (consecutiveIdleOrErrors >= 8) {
+            clearInterval(videoPollIntervalRef.current);
+            setIsVideoRendering(false);
+          }
         }
-      } catch (e) {}
-    }, 2500);
+      } catch (e) {
+        consecutiveIdleOrErrors++;
+        if (consecutiveIdleOrErrors >= 8) {
+          clearInterval(videoPollIntervalRef.current);
+          setIsVideoRendering(false);
+        }
+      }
+    }, 2000);
   };
 
   const handleGenerateOrDownloadVideo = async () => {
@@ -83,16 +110,29 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `Server responded with ${res.status}`);
+      }
       const data = await res.json();
       if (data.status === 'completed' && data.videoUrl) {
         setVideoUrl(data.videoUrl);
         setIsVideoRendering(false);
+        setVideoProgress(100);
+      } else if (data.status === 'failed') {
+        throw new Error(data.message || data.error || 'Video generation failed');
       } else {
+        if (typeof data.progress === 'number') {
+          setVideoProgress(data.progress);
+        }
+        if (data.stage) {
+          setVideoStage(data.stage);
+        }
         startPollingVideo(storyKey);
       }
     } catch (err) {
       setIsVideoRendering(false);
-      alert(lang === 'ar' ? 'حدث خطأ أثناء طلب توليد الفيديو' : 'Error requesting video generation');
+      alert((lang === 'ar' ? 'حدث خطأ أثناء طلب توليد الفيديو: ' : 'Error requesting video generation: ') + err.message);
     }
   };
 
