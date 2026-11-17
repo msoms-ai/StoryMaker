@@ -750,15 +750,6 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
         motionVideoClipPath,
         onSlideProgress: handleSlideFrameProgress
       });
-        audioPath,
-        slideText: slide.text || '',
-        timepoints,
-        duration: slideDuration,
-        outputPath: segmentOutPath,
-        presetIndex: i,
-        tempSubsDir,
-        motionVideoClipPath
-      });
 
       segmentPaths.push(segmentOutPath);
     }
