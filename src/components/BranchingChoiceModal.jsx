@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
   Compass,
   Map,
@@ -165,6 +166,7 @@ export default function BranchingChoiceModal({
   onChoiceSelected,
   lang = 'ar'
 }) {
+  const { token } = useAuth();
   const isArabic = lang === 'ar';
   const isRtl = isArabic;
 
@@ -194,7 +196,10 @@ export default function BranchingChoiceModal({
 
     fetch(`/api/stories/${story.id}/branches/generate-choices`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
       body: JSON.stringify({
         slideIndex: currentSlideIdx,
         storyTitle,
@@ -310,7 +315,10 @@ export default function BranchingChoiceModal({
 
       const res = await fetch(`/api/stories/${story.id}/branches/select-choice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           choice: chosenChoice,
           choiceId: chosenChoice.id,

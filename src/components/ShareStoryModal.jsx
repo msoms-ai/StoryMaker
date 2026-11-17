@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Share2, Copy, Check, Download, FileText, Globe, Calendar, User, Sparkles, MessageCircle, Send, Twitter, Facebook, Video, Play, FileDown, Palette } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { useAuth } from '../context/AuthContext';
 import { DUBAI_FONT_CSS } from '../utils/dubaiFont';
 import { generateActivityBookletPDF } from '../utils/activityBookletGenerator';
 
@@ -92,12 +93,20 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
     }, 2000);
   };
 
+  const { user, token, openAuthModal } = useAuth();
+
   const handleGenerateOrDownloadVideo = async () => {
     const storyKey = story.id || story.folderName;
 
-    // If video is already ready, trigger direct download / playback
+    // If video is already ready, trigger direct download / playback for anyone
     if (videoUrl) {
       window.open(videoUrl, '_blank');
+      return;
+    }
+
+    // Creating a brand-new video requires being logged in
+    if (!user) {
+      if (openAuthModal) openAuthModal('login');
       return;
     }
 
@@ -108,7 +117,10 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
     try {
       const res = await fetch(`/api/stories/${encodeURIComponent(storyKey)}/generate-video`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));

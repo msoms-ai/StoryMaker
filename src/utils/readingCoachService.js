@@ -193,7 +193,7 @@ export class AudioRecorder {
 /**
  * Send recorded speech to the backend reading-coach evaluator
  */
-export async function evaluateReading({ audioBase64, mimeType, expectedText, lang = 'ar' }) {
+export async function evaluateReading({ audioBase64, mimeType, expectedText, lang = 'ar', token = '' }) {
   if (!expectedText || expectedText.trim().length === 0) {
     throw new Error('Expected text is required for reading evaluation.');
   }
@@ -202,7 +202,8 @@ export async function evaluateReading({ audioBase64, mimeType, expectedText, lan
     const response = await fetch('/api/reading-coach/evaluate', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
       body: JSON.stringify({
         audioBase64,

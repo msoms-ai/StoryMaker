@@ -20,6 +20,7 @@ import {
   AudioWaveform as WaveformIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import {
   AudioRecorder,
   evaluateReading,
@@ -37,6 +38,7 @@ export default function ReadingCoachModal({
   storyTitle = ''
 }) {
   const { lang, dir, t } = useLanguage();
+  const { token } = useAuth();
 
   // Recording & Evaluation States
   const [recorderState, setRecorderState] = useState('idle'); // 'idle' | 'recording' | 'evaluating' | 'evaluated'
@@ -168,7 +170,8 @@ export default function ReadingCoachModal({
         audioBase64: base64,
         mimeType,
         expectedText: slideText,
-        lang
+        lang,
+        token
       });
 
       setEvaluation(result);

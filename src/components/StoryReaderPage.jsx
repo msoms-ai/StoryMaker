@@ -15,7 +15,7 @@ import VisualHotspotOverlay from './VisualHotspotOverlay';
 
 export default function StoryReaderPage({ storyId, setCurrentView, setViewingUserId }) {
   const { lang, dir, t } = useLanguage();
-  const { user } = useAuth();
+  const { user, token, openAuthModal } = useAuth();
   
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +33,29 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   
   const lastSlideTimeRef = useRef(Date.now());
   const maxReachedSlideRef = useRef(0);
+
+  // Protected AI Feature Handlers (Require Login)
+  const handleOpenBranchModal = () => {
+    if (!user) {
+      if (openAuthModal) openAuthModal('login');
+      setToastMessage(lang === 'ar' ? 'يرجى تسجيل الدخول لتجربة مسارات القصة التفاعلية بالذكاء الاصطناعي' : 'Please sign in to experience AI interactive story branching');
+      setShowToastNotice(true);
+      setTimeout(() => setShowToastNotice(false), 4500);
+      return;
+    }
+    setIsBranchModalOpen(true);
+  };
+
+  const handleOpenReadingCoach = () => {
+    if (!user) {
+      if (openAuthModal) openAuthModal('login');
+      setToastMessage(lang === 'ar' ? 'يرجى تسجيل الدخول للتدرب مع مرشد القراءة الصوتي الذكي' : 'Please sign in to practice with the AI Reading Coach');
+      setShowToastNotice(true);
+      setTimeout(() => setShowToastNotice(false), 4500);
+      return;
+    }
+    setIsReadingCoachOpen(true);
+  };
 
   // Stop ambient soundscape audio when reader unmounts
   useEffect(() => {
@@ -219,7 +242,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
           {/* Choose-Your-Own-Adventure Branch Button */}
           <button
-            onClick={() => setIsBranchModalOpen(true)}
+            onClick={handleOpenBranchModal}
             className={`px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-bold text-sm shadow-md transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95 ${lang === 'ar' ? 'font-arabic' : ''}`}
             title={lang === 'ar' ? 'اختر مسار القصة بالذكاء الاصطناعي (Choose-Your-Own-Adventure)' : 'Choose Your Adventure Branch'}
           >
@@ -229,7 +252,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
           {/* AI Reading Coach Button */}
           <button
-            onClick={() => setIsReadingCoachOpen(true)}
+            onClick={handleOpenReadingCoach}
             className={`px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-1.5 ${lang === 'ar' ? 'font-arabic' : ''}`}
             title={lang === 'ar' ? 'تدرب على القراءة مع مرشد النطق الذكي' : 'Practice reading with AI Reading Coach'}
           >
@@ -324,7 +347,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
                 {/* 2. Choose Your Adventure Branch */}
                 <button
-                  onClick={() => { setIsToolsDropdownOpen(false); setIsBranchModalOpen(true); }}
+                  onClick={() => { setIsToolsDropdownOpen(false); handleOpenBranchModal(); }}
                   className={`w-full p-2.5 rounded-2xl hover:bg-orange-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
                 >
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -342,7 +365,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
                 {/* 3. AI Reading Coach */}
                 <button
-                  onClick={() => { setIsToolsDropdownOpen(false); setIsReadingCoachOpen(true); }}
+                  onClick={() => { setIsToolsDropdownOpen(false); handleOpenReadingCoach(); }}
                   className={`w-full p-2.5 rounded-2xl hover:bg-emerald-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
                 >
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -431,7 +454,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
         {/* 2. Branch */}
         <button
-          onClick={() => setIsBranchModalOpen(true)}
+          onClick={handleOpenBranchModal}
           className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/20 text-xs font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-all shadow-xs"
           title={t('toolBranchTitle')}
         >
@@ -441,7 +464,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
         {/* 3. Coach */}
         <button
-          onClick={() => setIsReadingCoachOpen(true)}
+          onClick={handleOpenReadingCoach}
           className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-all shadow-xs"
           title={t('toolCoachTitle')}
         >

@@ -2379,7 +2379,7 @@ app.post('/api/stories/:id/status', authenticateUser, (req, res) => {
 });
 
 // POST /api/stories/:id/generate-video - Start or return background MP4 video rendering
-app.post('/api/stories/:id/generate-video', async (req, res) => {
+app.post('/api/stories/:id/generate-video', authenticateUser, async (req, res) => {
   try {
     const rawId = req.params.id || '';
     let decodedId = rawId;
@@ -2802,7 +2802,7 @@ app.get('/api/stories/:id/quiz/leaderboard', (req, res) => {
 // -------------------------------------------------------------
 
 // POST /api/stories/:id/branches/generate-choices - Generate 2 contrasting narrative choices
-app.post('/api/stories/:id/branches/generate-choices', async (req, res) => {
+app.post('/api/stories/:id/branches/generate-choices', authenticateUser, async (req, res) => {
   try {
     const storyId = req.params.id;
     const { slideIndex, currentSlideIdx, lang } = req.body;
@@ -2847,8 +2847,8 @@ app.post('/api/stories/:id/branches/generate-choices', async (req, res) => {
   }
 });
 
-// POST /api/stories/:id/branches/select-choice - Generate and append chosen branch scene
-app.post('/api/stories/:id/branches/select-choice', async (req, res) => {
+// POST /api/stories/:id/branches/select-choice - Generate and append chosen branch scene for reader session
+app.post('/api/stories/:id/branches/select-choice', authenticateUser, async (req, res) => {
   try {
     const storyId = req.params.id;
     const { choice, choiceId, slideIndex, lang, userId } = req.body;
@@ -2947,19 +2947,19 @@ app.post('/api/stories/:id/branches/select-choice', async (req, res) => {
       choiceTitle: choice?.titleAr || choice?.titleEn || choice?.title || ''
     };
 
-    // 3. Append to story if story exists in database
-    if (story) {
-      if (!story.slides) story.slides = [];
-      story.slides.push(newSlide);
-      story.slidesCount = story.slides.length;
-      story.readTimeMinutes = Math.ceil(story.slides.length * 0.8);
-      writeDB(db);
-    }
+    // 3. Keep original canonical story in database 100% pristine and untouched!
+    // The branched scene is returned to the active client reader session so the reader enjoys
+    // their custom path in real-time without modifying or bloating the author's master copy.
+    const sessionStory = story ? {
+      ...story,
+      slides: [...(story.slides || []), newSlide],
+      slidesCount: (story.slides?.length || 0) + 1
+    } : null;
 
     res.json({
       success: true,
       newSlide,
-      story,
+      story: sessionStory,
       slideIndex: nextSlideIdx
     });
   } catch (err) {
@@ -2999,7 +2999,7 @@ app.post('/api/stories/:id/progress', (req, res) => {
 });
 
 // POST /api/reading-coach/evaluate - AI Reading Coach & Pronunciation Evaluation
-app.post('/api/reading-coach/evaluate', async (req, res) => {
+app.post('/api/reading-coach/evaluate', authenticateUser, async (req, res) => {
   try {
     const { audioBase64, mimeType, expectedText, lang = 'ar' } = req.body;
 
