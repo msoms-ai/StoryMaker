@@ -106,7 +106,6 @@ export default function ColoringBookModal({
       if (imgUrl) {
         try {
           lineArtCanvas = await convertImageToLineArt(imgUrl, targetW, targetH, {
-            threshold: 52,
             title: currentSlide.title
           });
         } catch (e) {
