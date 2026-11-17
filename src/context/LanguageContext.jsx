@@ -71,6 +71,22 @@ const translations = {
     fastReaderToast: 'هون عليك! إقرأ بتمعن و استمتع!',
     storyCompletedConfetti: 'أحسنت! لقد أكملت قراءة القصة بنجاح! 🏆🌟',
     
+    // Story Tools & Responsive Mobile Actions
+    storyToolsMenuBtn: 'الأدوات',
+    storyToolsDropdownTitle: 'الأدوات والميزات التفاعلية',
+    toolColoringTitle: 'مرسم التلوين والأنشطة',
+    toolColoringDesc: 'تلوين المشاهد وتحميل كُتيّب أنشطة PDF للطباعة',
+    toolBranchTitle: 'اختر مسار المغامرة',
+    toolBranchDesc: 'اصنع مسارات وأحداث جديدة بالذكاء الاصطناعي',
+    toolCoachTitle: 'مرشد القراءة والنطق',
+    toolCoachDesc: 'تدرّب على النطق الصحيح مع تقييم فوري',
+    toolVideoTitle: 'فيديو القصة المتحرك',
+    toolVideoDesc: 'مشاهدة وتحميل فيديو MP4 بالصوت والصورة',
+    toolQuizTitle: 'اختبار القصة التفاعلي',
+    toolQuizDesc: '10 أسئلة ممتعة في الفهم والقواعد والمفردات',
+    toolShareTitle: 'مشاركة وطباعة PDF',
+    toolShareDesc: 'مشاركة الرابط وتحميل القصة كملف PDF أفقي',
+    
     // Page Content Labels
     aboutPageTitle: 'عن منصة قصص (Qisas)',
     rulesPageTitle: 'قوانين وإرشادات المحتوى',
@@ -198,6 +214,22 @@ const translations = {
     completionBar: 'Completion Progress',
     fastReaderToast: 'Take it easy! Read carefully and enjoy!',
     storyCompletedConfetti: 'Well Done! You have completed reading the story! 🏆🌟',
+
+    // Story Tools & Responsive Mobile Actions
+    storyToolsMenuBtn: 'Tools',
+    storyToolsDropdownTitle: 'Interactive Story Tools',
+    toolColoringTitle: 'Coloring & Activities',
+    toolColoringDesc: 'Color scenes & download printable activity booklet',
+    toolBranchTitle: 'Choose Your Adventure',
+    toolBranchDesc: 'Generate branching storylines with AI',
+    toolCoachTitle: 'AI Reading Coach',
+    toolCoachDesc: 'Practice reading aloud with instant feedback',
+    toolVideoTitle: 'Story Motion Video',
+    toolVideoDesc: 'Watch & download animated MP4 story video',
+    toolQuizTitle: 'Interactive Story Quiz',
+    toolQuizDesc: '10 interactive comprehension & grammar questions',
+    toolShareTitle: 'Share & Print PDF',
+    toolShareDesc: 'Share story link & download landscape PDF',
 
     // Page Content Labels
     aboutPageTitle: 'About Qisas Platform',

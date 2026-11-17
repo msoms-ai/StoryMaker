@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import confetti from 'canvas-confetti';
-import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2, Video, HelpCircle, Award, Mic, Compass, Palette } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2, Video, HelpCircle, Award, Mic, Compass, Palette, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import EnhancedAudioPlayer from './EnhancedAudioPlayer';
 import SoundscapePlayer from './SoundscapePlayer';
@@ -28,6 +28,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   const [isReadingCoachOpen, setIsReadingCoachOpen] = useState(false);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [isColoringModalOpen, setIsColoringModalOpen] = useState(false);
+  const [isToolsDropdownOpen, setIsToolsDropdownOpen] = useState(false);
   const [userBestQuizScore, setUserBestQuizScore] = useState(null);
   
   const lastSlideTimeRef = useRef(Date.now());
@@ -170,21 +171,22 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
         </div>
       )}
 
-      {/* Reader Header: Top Left Back Button & Story Title in Middle Top */}
-      <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+      {/* Reader Header: Top Left Back Button, Story Title in Center, and Actions */}
+      <div className="flex items-center justify-between gap-2 sm:gap-4 mb-3 pb-3 border-b border-slate-200 dark:border-slate-800 relative">
         
         {/* Top Left Back Button */}
         <button
           onClick={handleBackToHome}
-          className={`px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-sm transition-colors flex items-center gap-2 ${lang === 'ar' ? 'font-arabic' : ''}`}
+          className={`px-3 sm:px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs sm:text-sm transition-colors flex items-center gap-1.5 shrink-0 ${lang === 'ar' ? 'font-arabic' : ''}`}
+          title={t('readerBackBtn')}
         >
-          {lang === 'ar' ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
-          <span>{t('readerBackBtn')}</span>
+          {lang === 'ar' ? <ArrowRight className="w-4 h-4 shrink-0" /> : <ArrowLeft className="w-4 h-4 shrink-0" />}
+          <span className="hidden xs:inline sm:inline">{t('readerBackBtn')}</span>
         </button>
 
-        {/* Story Name & Author Visible in Middle Top */}
-        <div className="flex flex-col items-center">
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-story text-center truncate max-w-md">
+        {/* Story Name & Author Visible in Middle */}
+        <div className="flex flex-col items-center min-w-0 flex-1 px-1">
+          <h2 className="text-sm xs:text-base sm:text-xl font-black text-slate-900 dark:text-white font-story text-center truncate max-w-[130px] xs:max-w-[200px] sm:max-w-md">
             {(typeof story.name === 'object' && story.name ? (story.name[lang] || story.name.ar || story.name.en) : story.name) || story.title || (lang === 'ar' ? 'قصة مصورة' : 'Story')}
           </h2>
           {story.authorName && (
@@ -194,17 +196,17 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
                 if (setViewingUserId) setViewingUserId(id);
                 setCurrentView('publicProfile');
               }}
-              className="flex items-center gap-1.5 mt-1 text-sm text-slate-500 hover:text-amber-500 hover:underline cursor-pointer transition-colors font-bold"
+              className="flex items-center gap-1 mt-0.5 text-[11px] sm:text-xs text-slate-500 hover:text-amber-500 hover:underline cursor-pointer transition-colors font-bold truncate max-w-[120px] sm:max-w-xs"
               title={story.authorName}
             >
-              <User className="w-4 h-4" />
-              <span>{story.authorName}</span>
+              <User className="w-3 h-3 shrink-0" />
+              <span className="truncate">{story.authorName}</span>
             </div>
           )}
         </div>
 
-        {/* Top Right Header Actions */}
-        <div className="flex items-center gap-2">
+        {/* Desktop Header Actions (Visible on md+ screens) */}
+        <div className="hidden md:flex items-center gap-2 shrink-0">
           {/* Coloring Studio & Activity Center Button */}
           <button
             onClick={() => setIsColoringModalOpen(true)}
@@ -255,6 +257,227 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
             <span>{lang === 'ar' ? 'مشاركة' : 'Share'}</span>
           </button>
         </div>
+
+        {/* Mobile Header Actions (Visible on mobile/tablet < md screens) */}
+        <div className="flex md:hidden items-center gap-1.5 shrink-0 relative">
+          {/* Quick Share Icon Button */}
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className="p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 active:scale-95 transition-all"
+            title={lang === 'ar' ? 'مشاركة وطباعة PDF' : 'Share & PDF'}
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+
+          {/* Interactive Tools Dropdown Trigger */}
+          <div className="relative">
+            <button
+              onClick={() => setIsToolsDropdownOpen(!isToolsDropdownOpen)}
+              className="px-2.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-black text-xs shadow-md flex items-center gap-1 active:scale-95 transition-all"
+              title={t('storyToolsDropdownTitle')}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-200 animate-pulse" />
+              <span>{t('storyToolsMenuBtn')}</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isToolsDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Mobile Dropdown Backdrop */}
+            {isToolsDropdownOpen && (
+              <div 
+                className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]"
+                onClick={() => setIsToolsDropdownOpen(false)}
+              />
+            )}
+
+            {/* Mobile Dropdown Menu Card */}
+            {isToolsDropdownOpen && (
+              <div
+                className={`absolute ${dir === 'rtl' ? 'left-0' : 'right-0'} top-full mt-2 z-50 w-72 xs:w-80 rounded-3xl glass-panel bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 shadow-2xl p-2.5 space-y-1 animate-scale-in`}
+              >
+                <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    {t('storyToolsDropdownTitle')}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-black">
+                    6 {lang === 'ar' ? 'ميزات' : 'tools'}
+                  </span>
+                </div>
+
+                {/* 1. Coloring Studio */}
+                <button
+                  onClick={() => { setIsToolsDropdownOpen(false); setIsColoringModalOpen(true); }}
+                  className={`w-full p-2.5 rounded-2xl hover:bg-amber-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+                >
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Palette className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-black text-slate-900 dark:text-white leading-tight">
+                      {t('toolColoringTitle')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
+                      {t('toolColoringDesc')}
+                    </div>
+                  </div>
+                </button>
+
+                {/* 2. Choose Your Adventure Branch */}
+                <button
+                  onClick={() => { setIsToolsDropdownOpen(false); setIsBranchModalOpen(true); }}
+                  className={`w-full p-2.5 rounded-2xl hover:bg-orange-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+                >
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Compass className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-black text-slate-900 dark:text-white leading-tight">
+                      {t('toolBranchTitle')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
+                      {t('toolBranchDesc')}
+                    </div>
+                  </div>
+                </button>
+
+                {/* 3. AI Reading Coach */}
+                <button
+                  onClick={() => { setIsToolsDropdownOpen(false); setIsReadingCoachOpen(true); }}
+                  className={`w-full p-2.5 rounded-2xl hover:bg-emerald-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+                >
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Mic className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-black text-slate-900 dark:text-white leading-tight">
+                      {t('toolCoachTitle')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
+                      {t('toolCoachDesc')}
+                    </div>
+                  </div>
+                </button>
+
+                {/* 4. Motion Video */}
+                <button
+                  onClick={() => { setIsToolsDropdownOpen(false); setIsShareModalOpen(true); }}
+                  className={`w-full p-2.5 rounded-2xl hover:bg-indigo-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+                >
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-rose-500 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Video className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-black text-slate-900 dark:text-white leading-tight">
+                      {t('toolVideoTitle')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
+                      {t('toolVideoDesc')}
+                    </div>
+                  </div>
+                </button>
+
+                {/* 5. Story Quiz */}
+                <button
+                  onClick={() => { setIsToolsDropdownOpen(false); setIsQuizModalOpen(true); }}
+                  className={`w-full p-2.5 rounded-2xl hover:bg-purple-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+                >
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <HelpCircle className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-black text-slate-900 dark:text-white leading-tight">
+                      {t('toolQuizTitle')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
+                      {t('toolQuizDesc')}
+                    </div>
+                  </div>
+                </button>
+
+                {/* 6. Share & Landscape PDF */}
+                <button
+                  onClick={() => { setIsToolsDropdownOpen(false); setIsShareModalOpen(true); }}
+                  className={`w-full p-2.5 rounded-2xl hover:bg-amber-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+                >
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Share2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-black text-slate-900 dark:text-white leading-tight">
+                      {t('toolShareTitle')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
+                      {t('toolShareDesc')}
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Quick-Actions Dock (Small Icons Bar with smooth horizontal scrolling) */}
+      <div className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 -mt-1 mb-3 px-0.5">
+        {/* 1. Coloring */}
+        <button
+          onClick={() => setIsColoringModalOpen(true)}
+          className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-rose-500/10 hover:from-amber-500/20 hover:to-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-all shadow-xs"
+          title={t('toolColoringTitle')}
+        >
+          <Palette className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <span>{lang === 'ar' ? 'تلوين' : 'Coloring'}</span>
+        </button>
+
+        {/* 2. Branch */}
+        <button
+          onClick={() => setIsBranchModalOpen(true)}
+          className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/20 text-xs font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-all shadow-xs"
+          title={t('toolBranchTitle')}
+        >
+          <Compass className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+          <span>{lang === 'ar' ? 'مسارك' : 'Branch'}</span>
+        </button>
+
+        {/* 3. Coach */}
+        <button
+          onClick={() => setIsReadingCoachOpen(true)}
+          className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-all shadow-xs"
+          title={t('toolCoachTitle')}
+        >
+          <Mic className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <span>{lang === 'ar' ? 'مرشد' : 'Coach'}</span>
+        </button>
+
+        {/* 4. Video */}
+        <button
+          onClick={() => setIsShareModalOpen(true)}
+          className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-500/10 to-indigo-500/10 hover:from-rose-500/20 hover:to-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 text-xs font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-all shadow-xs"
+          title={t('toolVideoTitle')}
+        >
+          <Video className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+          <span>{lang === 'ar' ? 'فيديو' : 'Video'}</span>
+        </button>
+
+        {/* 5. Quiz */}
+        <button
+          onClick={() => setIsQuizModalOpen(true)}
+          className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-500/10 to-indigo-500/10 hover:from-purple-500/20 hover:to-indigo-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/20 text-xs font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-all shadow-xs"
+          title={t('toolQuizTitle')}
+        >
+          <HelpCircle className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+          <span>{lang === 'ar' ? 'اختبار' : 'Quiz'}</span>
+        </button>
+
+        {/* 6. Share */}
+        <button
+          onClick={() => setIsShareModalOpen(true)}
+          className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-all shadow-xs"
+          title={t('toolShareTitle')}
+        >
+          <Share2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <span>{lang === 'ar' ? 'مشاركة' : 'Share'}</span>
+        </button>
       </div>
 
       {/* Main Middle Slide Container */}
@@ -279,11 +502,11 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           {/* Quick Floating Color Slide Button */}
           <button
             onClick={() => setIsColoringModalOpen(true)}
-            className={`absolute top-4 ${dir === 'rtl' ? 'left-4' : 'right-4'} px-3 py-1.5 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white text-xs font-black backdrop-blur-md flex items-center gap-1.5 shadow-lg transition-transform hover:scale-105 z-10`}
+            className={`absolute top-3 ${dir === 'rtl' ? 'left-3' : 'right-3'} px-2.5 py-1.5 rounded-full bg-slate-900/75 hover:bg-slate-900 text-white text-[11px] sm:text-xs font-black backdrop-blur-md flex items-center gap-1.5 shadow-lg transition-transform hover:scale-105 z-10 active:scale-95`}
             title={lang === 'ar' ? 'لوّن هذا المشهد في المرسم' : 'Color this scene'}
           >
             <Palette className="w-3.5 h-3.5 text-amber-300" />
-            <span>{lang === 'ar' ? 'لوّن المشهد' : 'Color Scene'}</span>
+            <span className="hidden xs:inline sm:inline">{lang === 'ar' ? 'لوّن المشهد' : 'Color Scene'}</span>
           </button>
 
           {/* Slide Navigation Overlay Buttons */}
@@ -306,14 +529,14 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
         {/* Enhanced Audio Player Controls & Real-Time Spoken Word Highlighting */}
         <div className="w-full max-w-2xl glass-panel p-6 rounded-3xl space-y-4 shadow-lg border border-slate-200/60 dark:border-slate-800/60 font-story">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-black text-amber-600 dark:text-amber-400 font-story">
+          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+            <h3 className="text-base sm:text-lg font-black text-amber-600 dark:text-amber-400 font-story truncate max-w-[200px] sm:max-w-none">
               {currentSlide.title}
             </h3>
 
             <button
               onClick={() => setIsReadingCoachOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs sm:text-sm shadow-md flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs sm:text-sm shadow-md flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 shrink-0"
               title={lang === 'ar' ? 'تدرب على قراءة هذا المشهد بصوتك' : 'Practice reading this scene aloud'}
             >
               <Mic className="w-3.5 h-3.5 text-emerald-100 animate-pulse" />
@@ -334,7 +557,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           />
 
           {/* Choose-Your-Own-Adventure Branching Story Prompt */}
-          <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between flex-wrap gap-2.5">
+          <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
             <div className="flex items-center gap-2">
               {currentSlide.isBranchChoice ? (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold">
@@ -351,7 +574,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
             <button
               onClick={() => setIsBranchModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-amber-500/25 transition-all flex items-center gap-2 hover:scale-105 active:scale-95 cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-amber-500/25 transition-all flex items-center justify-center gap-2 hover:scale-105 active:scale-95 cursor-pointer"
               title={lang === 'ar' ? 'اختر مسارك (مغامرة تفاعلية Choose-Your-Own-Adventure)' : 'Choose Your Adventure Branch'}
             >
               <Compass className="w-4 h-4" />
