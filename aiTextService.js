@@ -1,3 +1,11 @@
+
+function sanitizeExplanation(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/^(أنت بطل!?|أنت رائع!?|أحسنت يا بطل!?|أحسنت!?|ممتاز!?|رائع!?|بطل!?|إجابة صحيحة!?|مبارك!?|تهانينا!?|عمل رائع!?|Great job!?|Well done!?|Awesome!?|Congratulations!?|Correct!?|Good job!?)\s*([!.,،-]\s*)?/i, '')
+    .trim();
+}
+
 import dotenv from 'dotenv';
 import retry from 'async-retry';
 
@@ -432,7 +440,7 @@ The questions MUST be evenly distributed across these 4 specific educational cat
 Requirements for each question:
 - Exactly 4 plausible multiple-choice options.
 - Exactly 1 unambiguous correct answer specified by "correctIndex" (0, 1, 2, or 3).
-- An encouraging, child-friendly "explanation" that clearly teaches why the answer is correct.
+- A neutral, purely objective educational "explanation" stating why the correct option is right. CRITICAL: NEVER include congratulatory words (e.g. DO NOT say "أنت بطل" or "أحسنت" or "رائع" or "Well done" or "Great job"), because this explanation will also be shown when the child answers incorrectly.
 - High clarity, natural tone, and for Arabic stories, use full diacritics/tashkeel on key terms to ensure ease of reading.
 
 Output JSON format ONLY:
@@ -530,7 +538,7 @@ ${storySlidesText}`;
                   question: q.question.trim(),
                   options: q.options.map(opt => String(opt).trim()),
                   correctIndex: Math.max(0, Math.min(3, q.correctIndex)),
-                  explanation: (q.explanation || '').trim()
+                  explanation: sanitizeExplanation(q.explanation || '')
                 }));
 
               if (sanitizedQuestions.length >= 8) {

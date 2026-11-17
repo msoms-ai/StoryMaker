@@ -21,6 +21,15 @@ import {
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
+
+// Helper to strip any inadvertent congratulations from explanations
+export function sanitizeExplanation(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/^(أنت بطل!?|أنت رائع!?|أحسنت يا بطل!?|أحسنت!?|ممتاز!?|رائع!?|بطل!?|إجابة صحيحة!?|مبارك!?|تهانينا!?|عمل رائع!?|Great job!?|Well done!?|Awesome!?|Congratulations!?|Correct!?|Good job!?)\s*([!.,،-]\s*)?/i, '')
+    .trim();
+}
+
 export default function StoryQuizModal({ isOpen, onClose, story, onRetakeSuccess }) {
   const { lang, dir, t } = useLanguage();
   const { user } = useAuth();
@@ -423,17 +432,53 @@ export default function StoryQuizModal({ isOpen, onClose, story, onRetakeSuccess
             <div className="pt-2">
               {isAnswered ? (
                 <div className="space-y-4 animate-fade-in">
-                  {currentQ.explanation && (
-                    <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-bold flex items-start gap-2.5">
-                      <HelpCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="block font-black text-amber-700 dark:text-amber-400 mb-0.5">
-                          {t('quizExplanationTitle')}
-                        </span>
-                        <span>{currentQ.explanation}</span>
-                      </div>
-                    </div>
-                  )}
+                  {(() => {
+                    const userSelectedIdx = selectedAnswers[currentIndex];
+                    const isUserCorrect = userSelectedIdx === currentQ.correctIndex;
+                    const cleanText = sanitizeExplanation(currentQ.explanation);
+                    const correctOptionText = currentQ.options[currentQ.correctIndex];
+
+                    if (isUserCorrect) {
+                      return (
+                        <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-400/60 dark:border-emerald-600/60 text-emerald-950 dark:text-emerald-100 text-xs sm:text-sm font-bold flex items-start gap-3 shadow-sm animate-scale-in">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <span className="block font-black text-emerald-800 dark:text-emerald-300 text-sm sm:text-base">
+                              {t('quizCorrectFeedbackTitle')}
+                            </span>
+                            {cleanText && (
+                              <p className="text-emerald-900/90 dark:text-emerald-200/90 leading-relaxed font-story font-normal">
+                                {cleanText}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="p-4 sm:p-5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-300 dark:border-rose-700/60 text-rose-950 dark:text-rose-100 text-xs sm:text-sm font-bold flex items-start gap-3 shadow-sm animate-scale-in">
+                          <XCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                          <div className="space-y-1.5 flex-1">
+                            <span className="block font-black text-rose-800 dark:text-rose-300 text-sm sm:text-base">
+                              {t('quizWrongFeedbackTitle')}
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5 py-1 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                              <span className="text-slate-500 font-bold">{t('quizCorrectAnswerLabel')}</span>
+                              <span className="px-2.5 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 font-black border border-emerald-300 dark:border-emerald-700">
+                                {correctOptionText}
+                              </span>
+                            </div>
+                            {cleanText && (
+                              <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-story font-normal text-xs sm:text-sm pt-0.5 border-t border-rose-200/60 dark:border-rose-900/40">
+                                <span className="font-bold text-rose-700 dark:text-rose-400">{t('quizLearnMoreLabel')} </span>
+                                {cleanText}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                  })()}
 
                   {/* Next / Finish Button */}
                   <div className="flex items-center justify-end">

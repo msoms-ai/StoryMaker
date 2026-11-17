@@ -2574,6 +2574,14 @@ app.delete('/api/moderation/stories/:id', authenticateUser, (req, res) => {
 // POST /api/stories/:id/progress - Save reader slide completion
 
 // Helper to prepare 10 balanced, randomized quiz questions with shuffled options
+
+function sanitizeExplanation(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/^(أنت بطل!?|أنت رائع!?|أحسنت يا بطل!?|أحسنت!?|ممتاز!?|رائع!?|بطل!?|إجابة صحيحة!?|مبارك!?|تهانينا!?|عمل رائع!?|Great job!?|Well done!?|Awesome!?|Congratulations!?|Correct!?|Good job!?)\s*([!.,،-]\s*)?/i, '')
+    .trim();
+}
+
 function prepareQuizSession(questionPool) {
   if (!questionPool || !Array.isArray(questionPool) || questionPool.length === 0) {
     return [];
@@ -2641,7 +2649,7 @@ function prepareQuizSession(questionPool) {
       question: q.question,
       options: optionsWithFlag.map(o => o.text),
       correctIndex: newCorrectIndex,
-      explanation: q.explanation || ''
+      explanation: sanitizeExplanation(q.explanation || '')
     };
   });
 }
