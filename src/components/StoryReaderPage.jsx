@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import confetti from 'canvas-confetti';
-import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2, Video, HelpCircle, Award } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Volume2, Pause, SkipForward, Maximize, AlertCircle, Play, CheckCircle2, User, Sparkles, Share2, Video, HelpCircle, Award, Mic, Compass, Palette } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import EnhancedAudioPlayer from './EnhancedAudioPlayer';
+import SoundscapePlayer from './SoundscapePlayer';
+import { soundscapeManager } from '../utils/ambientSoundscapes';
 import ShareStoryModal from './ShareStoryModal';
 import StoryQuizModal from './StoryQuizModal';
+import ReadingCoachModal from './ReadingCoachModal';
+import BranchingChoiceModal from './BranchingChoiceModal';
+import ColoringBookModal from './ColoringBookModal';
+import VisualHotspotOverlay from './VisualHotspotOverlay';
 
 export default function StoryReaderPage({ storyId, setCurrentView, setViewingUserId }) {
   const { lang, dir, t } = useLanguage();
@@ -19,10 +25,20 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   const [toastMessage, setToastMessage] = useState('');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
+  const [isReadingCoachOpen, setIsReadingCoachOpen] = useState(false);
+  const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
+  const [isColoringModalOpen, setIsColoringModalOpen] = useState(false);
   const [userBestQuizScore, setUserBestQuizScore] = useState(null);
   
   const lastSlideTimeRef = useRef(Date.now());
   const maxReachedSlideRef = useRef(0);
+
+  // Stop ambient soundscape audio when reader unmounts
+  useEffect(() => {
+    return () => {
+      soundscapeManager.stop();
+    };
+  }, []);
 
   // Fetch story data by storyId
   useEffect(() => {
@@ -110,6 +126,28 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
     setCurrentView('landing');
   };
 
+  const handleBranchChoiceSelected = (newSlide, chosenChoice) => {
+    if (!newSlide) return;
+    setStory((prev) => {
+      if (!prev) return prev;
+      const updatedSlides = [...(prev.slides || []), newSlide];
+      return {
+        ...prev,
+        slides: updatedSlides,
+        slidesCount: updatedSlides.length
+      };
+    });
+
+    // Advance to the new branched slide smoothly
+    setTimeout(() => {
+      const targetIdx = newSlide.index !== undefined ? newSlide.index : (story?.slides?.length || 0);
+      maxReachedSlideRef.current = Math.max(maxReachedSlideRef.current, targetIdx);
+      lastSlideTimeRef.current = 0; // Prevent speed-reading throttle on fresh branched slide
+      setCurrentSlideIdx(targetIdx);
+      triggerStarConfetti();
+    }, 350);
+  };
+
   if (loading || !story) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-8">
@@ -167,6 +205,36 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
         {/* Top Right Header Actions */}
         <div className="flex items-center gap-2">
+          {/* Coloring Studio & Activity Center Button */}
+          <button
+            onClick={() => setIsColoringModalOpen(true)}
+            className={`px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-bold text-sm shadow-md transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95 ${lang === 'ar' ? 'font-arabic' : ''}`}
+            title={lang === 'ar' ? 'مرسم التلوين وكتيب الأنشطة' : 'Coloring Studio & Activity Book'}
+          >
+            <Palette className="w-4 h-4 text-amber-100" />
+            <span>{lang === 'ar' ? 'تلوين' : 'Coloring'}</span>
+          </button>
+
+          {/* Choose-Your-Own-Adventure Branch Button */}
+          <button
+            onClick={() => setIsBranchModalOpen(true)}
+            className={`px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-bold text-sm shadow-md transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95 ${lang === 'ar' ? 'font-arabic' : ''}`}
+            title={lang === 'ar' ? 'اختر مسار القصة بالذكاء الاصطناعي (Choose-Your-Own-Adventure)' : 'Choose Your Adventure Branch'}
+          >
+            <Compass className="w-4 h-4 text-amber-100" />
+            <span>{lang === 'ar' ? 'اختر مسارك' : 'Branch'}</span>
+          </button>
+
+          {/* AI Reading Coach Button */}
+          <button
+            onClick={() => setIsReadingCoachOpen(true)}
+            className={`px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-1.5 ${lang === 'ar' ? 'font-arabic' : ''}`}
+            title={lang === 'ar' ? 'تدرب على القراءة مع مرشد النطق الذكي' : 'Practice reading with AI Reading Coach'}
+          >
+            <Mic className="w-4 h-4 text-emerald-100" />
+            <span>{lang === 'ar' ? 'مرشد القراءة' : 'Coach'}</span>
+          </button>
+
           {/* Video Button */}
           <button
             onClick={() => setIsShareModalOpen(true)}
@@ -200,6 +268,24 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
             className="w-full h-full object-contain rounded-2xl"
           />
 
+          {/* Interactive Visual Vocabulary Hotspots Overlay */}
+          <VisualHotspotOverlay
+            storyId={story?.id}
+            slideIdx={currentSlideIdx}
+            slide={currentSlide}
+            lang={lang}
+          />
+
+          {/* Quick Floating Color Slide Button */}
+          <button
+            onClick={() => setIsColoringModalOpen(true)}
+            className={`absolute top-4 ${dir === 'rtl' ? 'left-4' : 'right-4'} px-3 py-1.5 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white text-xs font-black backdrop-blur-md flex items-center gap-1.5 shadow-lg transition-transform hover:scale-105 z-10`}
+            title={lang === 'ar' ? 'لوّن هذا المشهد في المرسم' : 'Color this scene'}
+          >
+            <Palette className="w-3.5 h-3.5 text-amber-300" />
+            <span>{lang === 'ar' ? 'لوّن المشهد' : 'Color Scene'}</span>
+          </button>
+
           {/* Slide Navigation Overlay Buttons */}
           <button
             disabled={currentSlideIdx === 0}
@@ -220,15 +306,58 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
         {/* Enhanced Audio Player Controls & Real-Time Spoken Word Highlighting */}
         <div className="w-full max-w-2xl glass-panel p-6 rounded-3xl space-y-4 shadow-lg border border-slate-200/60 dark:border-slate-800/60 font-story">
-          <h3 className="text-lg font-black text-amber-600 dark:text-amber-400 font-story">
-            {currentSlide.title}
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-black text-amber-600 dark:text-amber-400 font-story">
+              {currentSlide.title}
+            </h3>
+
+            <button
+              onClick={() => setIsReadingCoachOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs sm:text-sm shadow-md flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95"
+              title={lang === 'ar' ? 'تدرب على قراءة هذا المشهد بصوتك' : 'Practice reading this scene aloud'}
+            >
+              <Mic className="w-3.5 h-3.5 text-emerald-100 animate-pulse" />
+              <span>{t('readingCoachLaunchBtn') || (lang === 'ar' ? 'مرشد القراءة 🎙️' : 'Reading Coach 🎙️')}</span>
+            </button>
+          </div>
 
           <EnhancedAudioPlayer
             audioUrl={currentSlide.voiceFile}
             text={currentSlide.text}
             lang={lang}
           />
+
+          {/* Ambient Soundscapes & Atmospheric Foley Audio Player */}
+          <SoundscapePlayer
+            storyCategory={story?.category || story?.theme || ''}
+            className="mt-2"
+          />
+
+          {/* Choose-Your-Own-Adventure Branching Story Prompt */}
+          <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between flex-wrap gap-2.5">
+            <div className="flex items-center gap-2">
+              {currentSlide.isBranchChoice ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold">
+                  <Compass className="w-3.5 h-3.5 text-amber-500 animate-spin-slow" />
+                  <span>{lang === 'ar' ? `مسار مُختار: ${currentSlide.choiceTitle || 'مغامرة فرعية'}` : `Chosen Path: ${currentSlide.choiceTitle || 'Branched Adventure'}`}</span>
+                </span>
+              ) : (
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>{lang === 'ar' ? 'ماذا سيفعل البطل الآن؟ اختر مسار المغامرة!' : 'What will the hero do next? Choose the adventure!'}</span>
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={() => setIsBranchModalOpen(true)}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-amber-500/25 transition-all flex items-center gap-2 hover:scale-105 active:scale-95 cursor-pointer"
+              title={lang === 'ar' ? 'اختر مسارك (مغامرة تفاعلية Choose-Your-Own-Adventure)' : 'Choose Your Adventure Branch'}
+            >
+              <Compass className="w-4 h-4" />
+              <span>{lang === 'ar' ? 'اختر مسارك 🌿' : 'Branch Path 🌿'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Story Quiz CTA Card - Visible only on the Last Slide */}
@@ -332,6 +461,35 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
         onClose={() => setIsQuizModalOpen(false)}
         story={story}
         onRetakeSuccess={(score) => setUserBestQuizScore((prev) => Math.max(prev || 0, score))}
+      />
+
+      {/* AI Reading Coach & Pronunciation Tutor Modal */}
+      <ReadingCoachModal
+        isOpen={isReadingCoachOpen}
+        onClose={() => setIsReadingCoachOpen(false)}
+        slideText={currentSlide?.text || ''}
+        slideTitle={currentSlide?.title || ''}
+        slideVoiceUrl={currentSlide?.voiceFile || ''}
+        storyTitle={story?.title || ''}
+      />
+
+      {/* Choose-Your-Own-Adventure Branching Modal */}
+      <BranchingChoiceModal
+        isOpen={isBranchModalOpen}
+        onClose={() => setIsBranchModalOpen(false)}
+        story={story}
+        currentSlideIdx={currentSlideIdx}
+        onChoiceSelected={handleBranchChoiceSelected}
+        lang={lang}
+      />
+
+      {/* Interactive Coloring Studio & Activity Center Modal */}
+      <ColoringBookModal
+        isOpen={isColoringModalOpen}
+        onClose={() => setIsColoringModalOpen(false)}
+        story={story}
+        initialSlideIdx={currentSlideIdx}
+        lang={lang}
       />
 
     </div>

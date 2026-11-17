@@ -19,6 +19,14 @@ export default function EnhancedAudioPlayer({ audioUrl, text, lang = 'ar', onEnd
   const audioRef = useRef(null);
   const utteranceRef = useRef(null);
 
+  // Sync narration playback state for Ambient Soundscape Auto-Ducking (smoothly ducks to 25%)
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('qisas:narration-playing', { detail: { isPlaying } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('qisas:narration-playing', { detail: { isPlaying: false } }));
+    };
+  }, [isPlaying]);
+
   // Split text into individual words for real-time highlighting
   const words = (text || '').trim().split(/\s+/).filter(w => w.length > 0);
 

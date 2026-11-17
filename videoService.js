@@ -5,6 +5,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 import retry from 'async-retry';
+import { generateVeoMotionClip } from './aiVeoService.js';
 
 dotenv.config();
 
@@ -416,7 +417,7 @@ Dialogue: 0,0:00:02.00,0:00:07.50,OutroQuestion,,0,0,0,,{\\fad(500,500)}💡 س�
 }
 
 /**
- * Render a single slide into an MP4 video segment with Ken Burns camera motion,
+ * Render a single slide into an MP4 video segment with Veo motion or Ken Burns camera motion,
  * synchronized Karaoke subtitles, and smooth scene fade transitions.
  */
 function renderSlideSegment({
@@ -427,7 +428,8 @@ function renderSlideSegment({
   duration,
   outputPath,
   presetIndex = 0,
-  tempSubsDir
+  tempSubsDir,
+  motionVideoClipPath = null
 }) {
   return new Promise(async (resolve, reject) => {
     // Probe audio to check if it has a valid, decodable audio stream
@@ -436,10 +438,18 @@ function renderSlideSegment({
 
     let command = ffmpeg();
 
-    // Input 0: Image looped for slideDuration
-    command.input(imagePath)
-      .loop(duration)
-      .inputOptions(['-framerate 25']);
+    const hasVideoMotion = motionVideoClipPath && fs.existsSync(motionVideoClipPath);
+
+    if (hasVideoMotion) {
+      // Input 0: Veo animated video clip looped across slide duration
+      command.input(motionVideoClipPath)
+        .inputOptions(['-stream_loop -1']);
+    } else {
+      // Input 0: Static image looped for slideDuration
+      command.input(imagePath)
+        .loop(duration)
+        .inputOptions(['-framerate 25']);
+    }
 
     // Input 1: Real audio or silent lavfi audio fallback
     if (useRealAudio) {
@@ -449,9 +459,15 @@ function renderSlideSegment({
         .inputFormat('lavfi');
     }
 
-    const totalFrames = Math.round(duration * 25);
-    const motionFilterFn = KEN_BURNS_PRESETS[presetIndex % KEN_BURNS_PRESETS.length];
-    const motionFilter = motionFilterFn(totalFrames);
+    const filterParts = [];
+    if (hasVideoMotion) {
+      // Scale animated motion video to standard 1080p canvas
+      filterParts.push('scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080');
+    } else {
+      const totalFrames = Math.round(duration * 25);
+      const motionFilterFn = KEN_BURNS_PRESETS[presetIndex % KEN_BURNS_PRESETS.length];
+      filterParts.push(motionFilterFn(totalFrames));
+    }
 
     // Build subtitle file if slide text is available
     let assRelPath = null;
@@ -469,8 +485,6 @@ function renderSlideSegment({
       });
     }
 
-    // Compose video filter chain
-    const filterParts = [motionFilter];
     if (assAbsPath && fs.existsSync(assAbsPath)) {
       // Escape colons and forward slashes for Windows FFmpeg filter graph
       const escapedAssPath = path.resolve(assAbsPath).replace(/\\/g, '/').replace(/:/g, '\\:');
@@ -491,6 +505,7 @@ function renderSlideSegment({
         '-preset fast',
         '-c:a aac',
         '-b:a 128k',
+        '-t', `${duration}`,
         '-shortest',
         '-movflags +faststart'
       ])
@@ -545,16 +560,17 @@ function concatenateSegments(segmentPaths, outputPath) {
 
 /**
  * Generate full vibrant story video:
- * - Ken Burns camera motion presets across scenes
+ * - Veo AI camera motion or Ken Burns motion presets across scenes
  * - Synchronized Karaoke word-by-word highlighted subtitles
  * - Smooth fade scene transitions
  * - Interactive Moral and Comprehension Question Outro suffix
  */
-export async function generateStoryVideo({ story, storiesDir, onProgress = () => {} }) {
+export async function generateStoryVideo({ story, storiesDir, onProgress = () => {}, motionMode = 'kenburns' }) {
   if (!story || !story.slides || story.slides.length === 0) {
     throw new Error('Story has no slides to render into video.');
   }
 
+  const effectiveMotionMode = motionMode || story.motionMode || 'kenburns';
   const safeFolder = path.basename(story.folderName);
   const storyFolder = path.resolve(storiesDir, safeFolder);
   if (!fs.existsSync(storyFolder)) {
@@ -577,8 +593,8 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
   const segmentPaths = [];
 
   const storyTitle = (typeof story.name === 'object' ? (story.name.ar || story.name.en) : (story.name || story.title)) || story.id;
-  console.log(`[Video Service] Starting vibrant video generation for: "${storyTitle}" (${totalSlides} slides)`);
-  onProgress(5, 'Preparing camera motion and subtitle tracks...');
+  console.log(`[Video Service] Starting vibrant video generation for: "${storyTitle}" (${totalSlides} slides, motionMode: ${effectiveMotionMode})`);
+  onProgress(5, `Preparing camera motion (${effectiveMotionMode}) and subtitle tracks...`);
 
   try {
     for (let i = 0; i < totalSlides; i++) {
@@ -651,8 +667,35 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
       const slideDuration = Math.max(audioDuration + 0.25, 2.5);
 
       const currentProgress = Math.round(10 + (i / totalSlides) * 70);
+
+      // Attempt Google Veo Motion generation when motionMode === 'veo'
+      let motionVideoClipPath = null;
+      if (effectiveMotionMode === 'veo') {
+        onProgress(currentProgress, `Generating Veo motion for slide ${i + 1} of ${totalSlides}...`);
+        const tempMotionPath = path.join(tempSegmentsDir, `veo_motion_${i}.mp4`);
+        try {
+          const veoRes = await generateVeoMotionClip({
+            imagePath: imgPath,
+            motionPrompt: slide.motionPrompt || slide.animationPrompt || '',
+            slideText: slide.text || '',
+            durationSeconds: slideDuration,
+            outputPath: tempMotionPath,
+            presetIndex: i
+          });
+
+          if (veoRes && veoRes.mode === 'veo' && fs.existsSync(veoRes.outputPath) && fs.statSync(veoRes.outputPath).size > 1000) {
+            motionVideoClipPath = veoRes.outputPath;
+            console.log(`[Video Service] Slide ${i + 1} using AI Veo motion clip.`);
+          } else {
+            console.log(`[Video Service] Slide ${i + 1} Veo fallback to Ken Burns camera motion preset.`);
+          }
+        } catch (veoErr) {
+          console.warn(`[Video Service] Slide ${i + 1} Veo generation fell back to Ken Burns:`, veoErr.message);
+        }
+      }
+
       onProgress(currentProgress, `Rendering slide ${i + 1} of ${totalSlides} (motion & karaoke subtitles)...`);
-      console.log(`[Video Service] Rendering slide ${i + 1}/${totalSlides} (duration: ${slideDuration.toFixed(2)}s, preset: ${i % KEN_BURNS_PRESETS.length})...`);
+      console.log(`[Video Service] Rendering slide ${i + 1}/${totalSlides} (duration: ${slideDuration.toFixed(2)}s, mode: ${motionVideoClipPath ? 'veo' : `kenburns (preset ${i % KEN_BURNS_PRESETS.length})`})...`);
 
       await renderSlideSegment({
         imagePath: imgPath,
@@ -662,7 +705,8 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
         duration: slideDuration,
         outputPath: segmentOutPath,
         presetIndex: i,
-        tempSubsDir
+        tempSubsDir,
+        motionVideoClipPath
       });
 
       segmentPaths.push(segmentOutPath);
@@ -685,7 +729,13 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
     segmentPaths.forEach(p => {
       try { fs.unlinkSync(p); } catch (e) {}
     });
-    try { fs.rmdirSync(tempSegmentsDir); } catch (e) {}
+    try {
+      const leftoverFiles = fs.readdirSync(tempSegmentsDir);
+      leftoverFiles.forEach(f => {
+        try { fs.unlinkSync(path.join(tempSegmentsDir, f)); } catch (e) {}
+      });
+      fs.rmdirSync(tempSegmentsDir);
+    } catch (e) {}
     try {
       const leftoverSubs = fs.readdirSync(tempSubsDir);
       leftoverSubs.forEach(f => {
@@ -702,7 +752,13 @@ export async function generateStoryVideo({ story, storiesDir, onProgress = () =>
     segmentPaths.forEach(p => {
       try { fs.unlinkSync(p); } catch (e) {}
     });
-    try { fs.rmdirSync(tempSegmentsDir); } catch (e) {}
+    try {
+      const leftoverFiles = fs.readdirSync(tempSegmentsDir);
+      leftoverFiles.forEach(f => {
+        try { fs.unlinkSync(path.join(tempSegmentsDir, f)); } catch (e) {}
+      });
+      fs.rmdirSync(tempSegmentsDir);
+    } catch (e) {}
     try { fs.rmdirSync(tempSubsDir); } catch (e) {}
     throw err;
   }

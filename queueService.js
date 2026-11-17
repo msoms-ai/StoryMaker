@@ -219,9 +219,9 @@ export function startWorker(generateLogicCallback) {
   // BullMQ Video Generation Worker
   try {
     const videoWorker = new Worker('story-video-generation', async (job) => {
-      const { story, storiesDir } = job.data;
+      const { story, storiesDir, motionMode } = job.data;
       const storyId = story.id || story.folderName;
-      console.log(`[BullMQ Video Worker] Rendering story video for: ${storyId}`);
+      console.log(`[BullMQ Video Worker] Rendering story video for: ${storyId} (motionMode: ${motionMode || 'kenburns'})`);
 
       const updateProgress = (progress, stage) => {
         job.updateProgress({ progress, stage });
@@ -231,7 +231,7 @@ export function startWorker(generateLogicCallback) {
       };
 
       updateProgress(5, 'Starting video rendering...');
-      const videoUrl = await generateStoryVideo({ story, storiesDir, onProgress: updateProgress });
+      const videoUrl = await generateStoryVideo({ story, storiesDir, onProgress: updateProgress, motionMode });
 
       // Save videoUrl to database
       try {
@@ -379,9 +379,9 @@ async function processLocalVideoQueue() {
   if (!nextJob) return;
 
   localVideoWorkerRunning++;
-  const { story, storiesDir } = nextJob;
+  const { story, storiesDir, motionMode } = nextJob;
   const storyId = story.id || story.folderName;
-  console.log(`[Local Video Worker] Rendering story video for: ${storyId}`);
+  console.log(`[Local Video Worker] Rendering story video for: ${storyId} (motionMode: ${motionMode || 'kenburns'})`);
 
   try {
     const updateProgress = (progress, stage) => {
@@ -391,7 +391,7 @@ async function processLocalVideoQueue() {
     };
 
     updateProgress(5, 'Starting video rendering...');
-    const videoUrl = await generateStoryVideo({ story, storiesDir, onProgress: updateProgress });
+    const videoUrl = await generateStoryVideo({ story, storiesDir, onProgress: updateProgress, motionMode });
 
     // Update story record in database.json
     try {
@@ -423,7 +423,7 @@ async function processLocalVideoQueue() {
   }
 }
 
-export async function addVideoJob(story, storiesDir) {
+export async function addVideoJob(story, storiesDir, motionMode = 'kenburns') {
   const storyId = story.id || story.folderName;
   const initialStatus = { status: 'queued', progress: 0, stage: 'Queued for video rendering...', storyId };
   jobVideoStatusStore.set(storyId, initialStatus);
@@ -432,7 +432,7 @@ export async function addVideoJob(story, storiesDir) {
   if (isRedisConnected) {
     try {
       const cleanJobId = `video_${String(storyId).replace(/[^a-zA-Z0-9_-]/g, '')}`;
-      await videoQueue.add('generate-video', { story, storiesDir }, {
+      await videoQueue.add('generate-video', { story, storiesDir, motionMode }, {
         jobId: cleanJobId,
         removeOnComplete: 100,
         removeOnFail: 200,
@@ -444,7 +444,7 @@ export async function addVideoJob(story, storiesDir) {
     }
   }
 
-  localVideoJobQueue.push({ story, storiesDir });
+  localVideoJobQueue.push({ story, storiesDir, motionMode });
   setImmediate(processLocalVideoQueue);
   return { success: true, queued: true, type: 'local', jobId: storyId };
 }

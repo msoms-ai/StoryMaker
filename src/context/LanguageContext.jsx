@@ -104,7 +104,28 @@ const translations = {
     quizReviewCorrectAnswer: 'الإجابة الصحيحة:',
     quizBackToStory: 'العودة للقصة 📖',
     quizCloseConfirm: 'هل أنت متأكد من مغادرة الاختبار قبل إكماله؟',
-    quizKeyboardHint: 'يمكنك أيضاً الاختيار بلوحة المفاتيح: الأرقام 1-4 أو المفاتيح A-D'
+    quizKeyboardHint: 'يمكنك أيضاً الاختيار بلوحة المفاتيح: الأرقام 1-4 أو المفاتيح A-D',
+    
+    // Reading Coach
+    readingCoachTitle: 'مرشد القراءة ومعلم النطق الذكي 🎙️',
+    readingCoachSub: 'اقرأ بصوتك الجميل وسيقوم المرشد الذكي بمساعدتك على تحسين النطق وتقديم النجوم!',
+    readingCoachStartRecord: 'اضغط للتسجيل وابدأ القراءة 🎙️',
+    readingCoachRecording: 'جاري الاستماع إليك... اقرأ بطلاقة ووضوح! 🔴',
+    readingCoachStopRecord: 'إنهاء التسجيل والتقييم ⏹️',
+    readingCoachEvaluating: 'جاري تحليل نطقك وقراءتك بواسطة الذكاء الاصطناعي... ✨',
+    readingCoachFluencyScore: 'درجة الطلاقة والقراءة',
+    readingCoachListenOriginal: 'استمع للنطق الصحيح 🎧',
+    readingCoachListenYours: 'استمع لتسجيلك 🔊',
+    readingCoachTryAgain: 'إعادة المحاولة 🔄',
+    readingCoachWordTip: 'نصيحة النطق:',
+    readingCoachLegendCorrect: 'نطق صحيح ومتقن',
+    readingCoachLegendMispronounced: 'يحتاج تدريب',
+    readingCoachLegendSkipped: 'تم تخطيه',
+    readingCoachPraiseHigh: 'ممتاز جداً! بطل القراءة الصاعد 🌟🌟🌟',
+    readingCoachPraiseMedium: 'أداء رائع ومحاولة ممتازة! استمر في التمرين 🌟🌟',
+    readingCoachPraisePractice: 'محاولة طيبة! تدرب أكثر لتنال النجوم الثلاثة 🌟',
+    readingCoachMicPermissionError: 'يرجى السماح بالوصول إلى الميكروفون للتسجيل.',
+    readingCoachLaunchBtn: 'مرشد القراءة 🎙️'
   },
   en: {
     appName: 'Qisas',
@@ -207,7 +228,28 @@ const translations = {
     quizReviewCorrectAnswer: 'Correct answer:',
     quizBackToStory: 'Back to Story 📖',
     quizCloseConfirm: 'Are you sure you want to exit the quiz before finishing?',
-    quizKeyboardHint: 'You can also press 1-4 or A-D keys to select'
+    quizKeyboardHint: 'You can also press 1-4 or A-D keys to select',
+
+    // Reading Coach
+    readingCoachTitle: 'AI Reading Coach & Pronunciation Tutor 🎙️',
+    readingCoachSub: 'Read aloud in your best voice, and the AI coach will guide your pronunciation with stars!',
+    readingCoachStartRecord: 'Tap to Record & Read 🎙️',
+    readingCoachRecording: 'Listening to you... Read clearly and with expression! 🔴',
+    readingCoachStopRecord: 'Stop & Evaluate ⏹️',
+    readingCoachEvaluating: 'Evaluating your pronunciation with AI... ✨',
+    readingCoachFluencyScore: 'Fluency & Reading Score',
+    readingCoachListenOriginal: 'Listen to Reference 🎧',
+    readingCoachListenYours: 'Listen to Your Voice 🔊',
+    readingCoachTryAgain: 'Try Again 🔄',
+    readingCoachWordTip: 'Pronunciation Tip:',
+    readingCoachLegendCorrect: 'Correct & Clear',
+    readingCoachLegendMispronounced: 'Needs Practice',
+    readingCoachLegendSkipped: 'Skipped',
+    readingCoachPraiseHigh: 'Outstanding! Star Reader 🌟🌟🌟',
+    readingCoachPraiseMedium: 'Great Job! Keep practicing 🌟🌟',
+    readingCoachPraisePractice: 'Good Try! Practice more for 3 stars 🌟',
+    readingCoachMicPermissionError: 'Please grant microphone access to practice reading.',
+    readingCoachLaunchBtn: 'Reading Coach 🎙️'
   }
 };
 

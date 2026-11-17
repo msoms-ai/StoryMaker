@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Share2, Copy, Check, Download, FileText, Globe, Calendar, User, Sparkles, MessageCircle, Send, Twitter, Facebook, Video, Play } from 'lucide-react';
+import { X, Share2, Copy, Check, Download, FileText, Globe, Calendar, User, Sparkles, MessageCircle, Send, Twitter, Facebook, Video, Play, FileDown, Palette } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { DUBAI_FONT_CSS } from '../utils/dubaiFont';
+import { generateActivityBookletPDF } from '../utils/activityBookletGenerator';
 
 export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' }) {
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState({ current: 0, total: 0 });
+  const [isGeneratingBooklet, setIsGeneratingBooklet] = useState(false);
+  const [bookletProgressText, setBookletProgressText] = useState('');
   const [isVideoRendering, setIsVideoRendering] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoStage, setVideoStage] = useState('');
@@ -197,6 +200,26 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
     }
   };
 
+  const handleDownloadActivityBooklet = async () => {
+    if (!story || isGeneratingBooklet) return;
+    setIsGeneratingBooklet(true);
+    try {
+      await generateActivityBookletPDF(story, {
+        childName: '',
+        lang,
+        onProgress: (current, total, label) => {
+          setBookletProgressText(`${label} (${current}/${total})`);
+        }
+      });
+    } catch (err) {
+      console.error('Booklet PDF Error:', err);
+      alert(lang === 'ar' ? 'تعذر إنشاء كُتيّب الأنشطة. يرجى المحاولة مرة أخرى.' : 'Failed to generate activity booklet.');
+    } finally {
+      setIsGeneratingBooklet(false);
+      setBookletProgressText('');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
       <div className={`relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 ${lang === 'ar' ? 'font-arabic' : ''}`}>
@@ -345,6 +368,34 @@ export default function ShareStoryModal({ isOpen, onClose, story, lang = 'ar' })
             {lang === 'ar'
               ? 'يحتوي الملف على جميع المشاهد ونصوصها مع الترويسة والتوثيق في صفحات أفقية جاهزة للطباعة'
               : 'Includes all story scenes and texts with header & footer in landscape printable pages'}
+          </p>
+        </div>
+
+        {/* SECTION 2B: Download 7-Page Activity & Coloring Booklet PDF */}
+        <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+          <button
+            onClick={handleDownloadActivityBooklet}
+            disabled={isGeneratingBooklet}
+            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-black text-sm flex items-center justify-center gap-3 shadow-lg hover:shadow-teal-500/25 transition-all disabled:opacity-50"
+          >
+            {isGeneratingBooklet ? (
+              <>
+                <Sparkles className="w-5 h-5 animate-spin text-amber-200" />
+                <span>
+                  {bookletProgressText || (lang === 'ar' ? 'جاري تجهيز كُتيّب الأنشطة والتلوين...' : 'Preparing Activity Booklet...')}
+                </span>
+              </>
+            ) : (
+              <>
+                <Palette className="w-5 h-5 text-amber-300" />
+                <span>{lang === 'ar' ? 'تحميل كُتيّب الأنشطة والتلوين الذكي (7 صفحات PDF)' : 'Download 7-Page Activity & Coloring Booklet (PDF)'}</span>
+              </>
+            )}
+          </button>
+          <p className="text-center text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+            {lang === 'ar'
+              ? 'كتيب تعليمي وترفيهي متكامل: غلاف مخصص، 3 صفحات تلوين، لعبة بحث عن الكلمات، متاهة، وشهادة إنجاز'
+              : 'Complete printable booklet: custom cover, 3 coloring scenes, word search, maze & certificate'}
           </p>
         </div>
 

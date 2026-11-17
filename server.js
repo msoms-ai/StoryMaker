@@ -7,6 +7,8 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { generateAndSaveSlideImage, generateProfileCoverImage, generateCharacterAvatar } from './aiImageService.js';
 import { generateStoryPlanWithGemini, generateStoryTextWithGemini, generateStoryQuizWithGemini } from './aiTextService.js';
+import { generateBranchOptions, generateBranchedScene } from './aiBranchingService.js';
+import { extractSlideVocabularyHotspots } from './aiHotspotService.js';
 import { generateAndSaveSlideVoice } from './aiVoiceService.js';
 import { sendOtpEmail, sendTeacherRequestToAdmin, sendPackagePurchaseEmail, sendFeedbackEmail } from './emailService.js';
 import jwt from 'jsonwebtoken';
@@ -2406,13 +2408,15 @@ app.post('/api/stories/:id/generate-video', async (req, res) => {
       return res.json(currentStatus);
     }
 
-    // Queue video generation job
-    const queuedResult = await addVideoJob(story, STORIES_DIR);
+    // Queue video generation job with motionMode support ('veo' | 'kenburns')
+    const motionMode = req.body?.motionMode || req.query?.motionMode || story.motionMode || 'kenburns';
+    const queuedResult = await addVideoJob(story, STORIES_DIR, motionMode);
     res.json({
       success: true,
       status: 'processing',
       progress: 5,
-      stage: 'Starting background video generation...',
+      stage: `Starting background video generation (${motionMode})...`,
+      motionMode,
       queuedResult
     });
   } catch (err) {
@@ -2758,6 +2762,181 @@ app.get('/api/stories/:id/quiz/leaderboard', (req, res) => {
 });
 
 
+// -------------------------------------------------------------
+// CHOOSE-YOUR-OWN-ADVENTURE BRANCHING STORIES ENDPOINTS
+// -------------------------------------------------------------
+
+// POST /api/stories/:id/branches/generate-choices - Generate 2 contrasting narrative choices
+app.post('/api/stories/:id/branches/generate-choices', async (req, res) => {
+  try {
+    const storyId = req.params.id;
+    const { slideIndex, currentSlideIdx, lang } = req.body;
+    const db = readDB();
+    const story = db.stories.find(s => s.id === storyId);
+
+    const targetIndex = slideIndex !== undefined ? slideIndex : (currentSlideIdx !== undefined ? currentSlideIdx : 0);
+    
+    let storyTitle = '';
+    let previousSlides = [];
+    let targetLang = lang;
+
+    if (story) {
+      targetLang = targetLang || story.lang || 'ar';
+      storyTitle = (typeof story.name === 'object' && story.name ? (story.name[targetLang] || story.name.ar || story.name.en) : story.name) || story.title || '';
+      previousSlides = (story.slides || []).slice(0, targetIndex + 1);
+    } else {
+      storyTitle = req.body.storyTitle || req.body.title || 'Adventure Story';
+      previousSlides = Array.isArray(req.body.slides) ? req.body.slides.slice(0, targetIndex + 1) : [];
+      targetLang = targetLang || req.body.lang || 'ar';
+    }
+
+    const branchData = await generateBranchOptions({
+      storyTitle,
+      previousSlides,
+      currentSlideIdx: targetIndex,
+      lang: targetLang
+    });
+
+    res.json({
+      success: true,
+      storyId,
+      slideIndex: targetIndex,
+      choices: branchData.choices
+    });
+  } catch (err) {
+    console.error('[API /api/stories/:id/branches/generate-choices Error]:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to generate branch choices'
+    });
+  }
+});
+
+// POST /api/stories/:id/branches/select-choice - Generate and append chosen branch scene
+app.post('/api/stories/:id/branches/select-choice', async (req, res) => {
+  try {
+    const storyId = req.params.id;
+    const { choice, choiceId, slideIndex, lang, userId } = req.body;
+    const db = readDB();
+    const story = db.stories.find(s => s.id === storyId);
+
+    let storyTitle = '';
+    let previousSlides = [];
+    let targetLang = lang;
+    let folderName = '';
+
+    if (story) {
+      targetLang = targetLang || story.lang || 'ar';
+      storyTitle = (typeof story.name === 'object' && story.name ? (story.name[targetLang] || story.name.ar || story.name.en) : story.name) || story.title || '';
+      const targetIndex = slideIndex !== undefined ? slideIndex : (story.slides.length - 1);
+      previousSlides = (story.slides || []).slice(0, targetIndex + 1);
+      folderName = story.folderName;
+    } else {
+      storyTitle = req.body.storyTitle || req.body.title || 'Adventure Story';
+      previousSlides = Array.isArray(req.body.slides) ? req.body.slides : [];
+      targetLang = targetLang || req.body.lang || 'ar';
+      folderName = req.body.folderName || '';
+    }
+
+    // 1. Generate new branched narrative scene text & image prompt with Gemini
+    const branchScene = await generateBranchedScene({
+      storyTitle,
+      choiceSelected: choice || { id: choiceId },
+      previousSlides,
+      lang: targetLang
+    });
+
+    const nextSlideIdx = previousSlides.length;
+    let imageFile = '';
+    let voiceFile = '';
+
+    // 2. Try generating image & voice if story has an output folder
+    if (folderName) {
+      const storyFolderPath = path.join(STORIES_DIR, folderName);
+      if (fs.existsSync(storyFolderPath)) {
+        // Attempt image generation
+        try {
+          const imgDir = path.join(storyFolderPath, 'story_images');
+          if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
+          const savedImgFilename = await generateAndSaveSlideImage({
+            slideText: branchScene.text,
+            storyTitle,
+            category: story?.category || 'adventure',
+            slideIndex: nextSlideIdx,
+            characters: story?.characters || [],
+            outputDir: imgDir,
+            lang: targetLang,
+            artStyle: story?.artStyle || 'Colored Pencil'
+          });
+          imageFile = `/STORIES/${encodeURIComponent(folderName)}/story_images/${savedImgFilename}`;
+        } catch (imgErr) {
+          console.warn('[Branch Select] Notice generating image for branch slide:', imgErr.message);
+          const prevImg = previousSlides[previousSlides.length - 1]?.imageFile;
+          imageFile = prevImg || '';
+        }
+
+        // Attempt voice generation
+        try {
+          const voiceDir = path.join(storyFolderPath, 'story_voice');
+          if (!fs.existsSync(voiceDir)) fs.mkdirSync(voiceDir, { recursive: true });
+          const savedVoiceFilename = await generateAndSaveSlideVoice({
+            slideText: branchScene.text,
+            slideIndex: nextSlideIdx,
+            outputDir: voiceDir,
+            lang: targetLang,
+            voiceGender: 'male'
+          });
+          voiceFile = `/STORIES/${encodeURIComponent(folderName)}/story_voice/${savedVoiceFilename}`;
+        } catch (voiceErr) {
+          console.warn('[Branch Select] Notice generating voice for branch slide:', voiceErr.message);
+        }
+      }
+    }
+
+    // Fall back to previous slide's image if still empty
+    if (!imageFile && previousSlides.length > 0) {
+      imageFile = previousSlides[previousSlides.length - 1].imageFile || '';
+    }
+
+    const newSlide = {
+      index: nextSlideIdx,
+      title: branchScene.title,
+      text: branchScene.text,
+      imageFile,
+      voiceFile,
+      imagePrompt: branchScene.imagePrompt,
+      speakerRole: branchScene.speakerRole || 'Narrator',
+      voiceRole: branchScene.voiceRole || 'narrator_male',
+      isBranchChoice: true,
+      choiceOrigin: (choice?.id || choiceId || 'a'),
+      choiceTitle: choice?.titleAr || choice?.titleEn || choice?.title || ''
+    };
+
+    // 3. Append to story if story exists in database
+    if (story) {
+      if (!story.slides) story.slides = [];
+      story.slides.push(newSlide);
+      story.slidesCount = story.slides.length;
+      story.readTimeMinutes = Math.ceil(story.slides.length * 0.8);
+      writeDB(db);
+    }
+
+    res.json({
+      success: true,
+      newSlide,
+      story,
+      slideIndex: nextSlideIdx
+    });
+  } catch (err) {
+    console.error('[API /api/stories/:id/branches/select-choice Error]:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to select branch choice and generate scene'
+    });
+  }
+});
+
+
 app.post('/api/stories/:id/progress', (req, res) => {
   const { currentSlide, completed, userId } = req.body;
   const db = readDB();
@@ -2782,6 +2961,290 @@ app.post('/api/stories/:id/progress', (req, res) => {
   }
 
   res.json({ success: true });
+});
+
+// POST /api/reading-coach/evaluate - AI Reading Coach & Pronunciation Evaluation
+app.post('/api/reading-coach/evaluate', async (req, res) => {
+  try {
+    const { audioBase64, mimeType, expectedText, lang = 'ar' } = req.body;
+
+    if (!expectedText || typeof expectedText !== 'string' || expectedText.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'expectedText is required for reading evaluation.'
+      });
+    }
+
+    const cleanExpectedText = expectedText.trim();
+    const cleanWords = cleanExpectedText.split(/\s+/).filter(w => w.length > 0);
+
+    // Deterministic fallback generator
+    const buildDeterministicFallback = (reason = '') => {
+      console.log(`[Reading Coach] Using deterministic fallback (Reason: ${reason})`);
+      const total = cleanWords.length;
+      const evaluatedWords = cleanWords.map((word, idx) => {
+        const clean = word.replace(/[.,!?;:«»"'`()[\]{}<>\-_—*~]/gu, '');
+        // Highlight one word for constructive pronunciation guidance if slide has enough words
+        const isTarget = total > 5 && idx === Math.floor(total / 2);
+        if (isTarget) {
+          return {
+            word,
+            status: 'mispronounced',
+            feedback: lang === 'ar'
+              ? `تأنَّ في نطق كلمة "${clean}" واستمع إلى مخارج حروفها بدقة.`
+              : `Try saying "${clean}" slowly with clear phonics.`
+          };
+        }
+        return {
+          word,
+          status: 'correct',
+          feedback: lang === 'ar' ? 'نطق متقن ورائع! ✨' : 'Great pronunciation! ✨'
+        };
+      });
+
+      const misCount = evaluatedWords.filter(w => w.status === 'mispronounced').length;
+      const fluencyScore = Math.max(82, Math.round(((total - misCount * 0.4) / Math.max(1, total)) * 100));
+      const overallFeedback = lang === 'ar'
+        ? 'قراءة رائعة وبداية مشجعة جداً يا بطل! استمر في التدرب والإلقاء الجميل 🌟'
+        : 'Awesome reading effort! You have a lovely rhythm and confidence, keep it up! 🌟';
+
+      return {
+        success: true,
+        fluencyScore,
+        words: evaluatedWords,
+        overallFeedback,
+        isFallback: true
+      };
+    };
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.json(buildDeterministicFallback('Missing GEMINI_API_KEY'));
+    }
+
+    if (!audioBase64 || typeof audioBase64 !== 'string' || audioBase64.length < 50) {
+      return res.json(buildDeterministicFallback('Audio data empty or too short'));
+    }
+
+    // Sanitize MIME type (remove parameters like codecs=opus)
+    let cleanMime = (mimeType || 'audio/webm').split(';')[0].trim().toLowerCase();
+    const validAudioMimes = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/ogg', 'audio/aac', 'audio/flac', 'audio/mp4', 'audio/m4a'];
+    if (!validAudioMimes.includes(cleanMime)) {
+      cleanMime = 'audio/webm';
+    }
+
+    const prompt = `You are an encouraging, expert speech and reading coach for children in an educational storytelling app.
+Language: ${lang === 'ar' ? 'Arabic' : 'English'}
+
+Expected slide text the child was asked to read aloud:
+"${cleanExpectedText}"
+
+Task:
+Listen carefully to the child's recorded speech and compare what was spoken word-by-word against the expected text.
+
+Instructions:
+1. For EVERY word in the expected text in sequence:
+   - Determine status:
+     * "correct": spoken clearly, accurately, and intelligibly.
+     * "mispronounced": pronounced with noticeable distortion, missing sounds, wrong vowel/harakah, or stumbled.
+     * "skipped": omitted entirely or skipped over.
+   - For "mispronounced" words, provide a friendly, simple 1-sentence tip suitable for a child (in ${lang === 'ar' ? 'Arabic' : 'English'}) explaining how to pronounce it better.
+   - For "correct" or "skipped" words, provide brief praise or leave empty.
+2. Calculate an overall fluencyScore (0 to 100 integer) based on pronunciation accuracy, completeness, and natural child pace.
+3. Provide a warm, child-friendly overall feedback sentence (in ${lang === 'ar' ? 'Arabic' : 'English'}).
+
+Return strictly valid JSON with this exact schema:
+{
+  "fluencyScore": 85,
+  "words": [
+    {
+      "word": "exact word from expected text",
+      "status": "correct",
+      "feedback": ""
+    }
+  ],
+  "overallFeedback": "Encouraging overall feedback message"
+}`;
+
+    // Candidate Gemini models with multimodal audio capability
+    const candidateModels = [
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-2.5-flash',
+      'gemini-3.8-flash'
+    ];
+
+    let evaluationResult = null;
+    let lastError = null;
+
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        console.log(`[Reading Coach] Evaluating child speech with Gemini model: ${model}...`);
+
+        const geminiRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: cleanMime,
+                      data: audioBase64
+                    }
+                  },
+                  {
+                    text: prompt
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.2
+            }
+          })
+        });
+
+        if (!geminiRes.ok) {
+          const errBody = await geminiRes.text();
+          console.warn(`[Reading Coach] Model ${model} returned HTTP ${geminiRes.status}:`, errBody.substring(0, 200));
+          lastError = new Error(`HTTP ${geminiRes.status}`);
+          continue;
+        }
+
+        const data = await geminiRes.json();
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!rawText) {
+          console.warn(`[Reading Coach] Model ${model} returned empty candidate parts`);
+          continue;
+        }
+
+        let parsed = null;
+        try {
+          parsed = JSON.parse(rawText);
+        } catch (jsonErr) {
+          // If markdown-wrapped, unwrap
+          const unwrap = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+          parsed = JSON.parse(unwrap);
+        }
+
+        if (parsed && Array.isArray(parsed.words)) {
+          // Verify that words align with expected text words
+          const mappedWords = cleanWords.map((expWord, idx) => {
+            const found = parsed.words.find(w => w.word && w.word.trim().toLowerCase() === expWord.trim().toLowerCase()) 
+                       || parsed.words[idx];
+            if (found && (found.status === 'correct' || found.status === 'mispronounced' || found.status === 'skipped')) {
+              return {
+                word: expWord,
+                status: found.status,
+                feedback: found.feedback || ''
+              };
+            }
+            return {
+              word: expWord,
+              status: 'correct',
+              feedback: ''
+            };
+          });
+
+          evaluationResult = {
+            success: true,
+            fluencyScore: typeof parsed.fluencyScore === 'number' ? Math.min(100, Math.max(0, Math.round(parsed.fluencyScore))) : 85,
+            words: mappedWords,
+            overallFeedback: parsed.overallFeedback || (lang === 'ar' ? 'أداء ممتاز يا بطل!' : 'Great reading!')
+          };
+          break; // successfully evaluated
+        }
+      } catch (geminiErr) {
+        console.warn(`[Reading Coach] Error calling model ${model}:`, geminiErr.message);
+        lastError = geminiErr;
+      }
+    }
+
+    if (evaluationResult) {
+      return res.json(evaluationResult);
+    }
+
+    console.warn('[Reading Coach] All candidate models failed or returned unparseable content. Using deterministic fallback.');
+    return res.json(buildDeterministicFallback(lastError ? lastError.message : 'Model generation failure'));
+  } catch (error) {
+    console.error('[Reading Coach] Unexpected endpoint error:', error);
+    return res.json({
+      success: true,
+      fluencyScore: 85,
+      words: (req.body?.expectedText || '').trim().split(/\s+/).filter(w => w.length > 0).map(w => ({
+        word: w,
+        status: 'correct',
+        feedback: ''
+      })),
+      overallFeedback: req.body?.lang === 'ar'
+        ? 'أحسنت! محاولة قراءة ممتازة ومثابرة رائعة 🌟'
+        : 'Well done! Great reading effort! 🌟',
+      isFallback: true
+    });
+  }
+});
+
+// GET /api/stories/:id/slides/:slideIdx/hotspots - Visual Vocabulary Hotspots Extraction & Cache
+app.get('/api/stories/:id/slides/:slideIdx/hotspots', async (req, res) => {
+  try {
+    const { id, slideIdx } = req.params;
+    const index = parseInt(slideIdx, 10);
+
+    if (isNaN(index)) {
+      return res.status(400).json({ success: false, message: 'Invalid slide index' });
+    }
+
+    const db = readDB();
+    const story = db.stories.find((s) => s.id === id);
+    if (!story) {
+      return res.status(404).json({ success: false, message: 'Story not found' });
+    }
+
+    if (!story.slides || index < 0 || index >= story.slides.length) {
+      return res.status(404).json({ success: false, message: 'Slide index out of range' });
+    }
+
+    const slide = story.slides[index];
+
+    // 1. Return cached hotspots if present
+    if (slide.hotspots && Array.isArray(slide.hotspots) && slide.hotspots.length > 0) {
+      return res.json({
+        success: true,
+        hotspots: slide.hotspots,
+        cached: true
+      });
+    }
+
+    // 2. Extract hotspots using Gemini Flash Multimodal Vision
+    console.log(`[Hotspots API] Extracting visual hotspots for story "${story.title || story.id}", slide ${index + 1}...`);
+    const hotspots = await extractSlideVocabularyHotspots({
+      imagePath: slide.imageFile,
+      slideText: slide.text || '',
+      lang: story.lang || 'ar'
+    });
+
+    // 3. Cache into database.json
+    slide.hotspots = hotspots;
+    writeDB(db);
+    console.log(`[Hotspots API] Cached ${hotspots.length} hotspots for story ${id}, slide ${index}.`);
+
+    return res.json({
+      success: true,
+      hotspots,
+      cached: false
+    });
+  } catch (error) {
+    console.error('[Hotspots API Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to extract slide vocabulary hotspots',
+      error: error.message
+    });
+  }
 });
 
 // Serve Frontend
