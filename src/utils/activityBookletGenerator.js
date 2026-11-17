@@ -117,13 +117,14 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
     const w = targetWidth;
     const h = targetHeight;
 
-    // 3. Grayscale luminance
-    const gray = new Float32Array(w * h);
-    const rChan = new Float32Array(w * h);
-    const gChan = new Float32Array(w * h);
-    const bChan = new Float32Array(w * h);
+    // 3. Grayscale luminance and color channels
+    const total = w * h;
+    const gray = new Float32Array(total);
+    const rChan = new Float32Array(total);
+    const gChan = new Float32Array(total);
+    const bChan = new Float32Array(total);
 
-    for (let i = 0; i < w * h; i++) {
+    for (let i = 0; i < total; i++) {
       const idx = i * 4;
       const r = pixels[idx];
       const g = pixels[idx + 1];
@@ -134,7 +135,7 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
       gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
     }
 
-    // Helper: Fast Separable 1D Gaussian Blur
+    // Helper: Fast Separable 1D Gaussian Blur for noise suppression
     function gaussianBlur1D(src, sigma) {
       const radius = Math.ceil(sigma * 2.5);
       const size = radius * 2 + 1;
@@ -147,10 +148,9 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
       }
       for (let i = 0; i < size; i++) kernel[i] /= ksum;
 
-      const temp = new Float32Array(w * h);
-      const dst = new Float32Array(w * h);
+      const temp = new Float32Array(total);
+      const dst = new Float32Array(total);
 
-      // Horizontal pass
       for (let y = 0; y < h; y++) {
         const rowOffset = y * w;
         for (let x = 0; x < w; x++) {
@@ -163,7 +163,6 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
         }
       }
 
-      // Vertical pass
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           let acc = 0;
@@ -177,135 +176,176 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
       return dst;
     }
 
-    // 4. Extended Difference of Gaussians (XDoG)
-    // Eliminates flat textures and smooth lighting/shadow gradients completely
-    const g1 = gaussianBlur1D(gray, 1.2);
-    const g2 = gaussianBlur1D(gray, 2.6);
+    const smoothGray = gaussianBlur1D(gray, 1.3);
+    const smoothR = gaussianBlur1D(rChan, 1.3);
+    const smoothG = gaussianBlur1D(gChan, 1.3);
+    const smoothB = gaussianBlur1D(bChan, 1.3);
 
-    const gamma = 0.985;
-    const tau = 4.2;
-    const rawEdges = new Uint8Array(w * h);
+    // 4. Multi-channel Sobel Gradients (Luminance + Color boundaries)
+    const gradMag = new Float32Array(total);
+    const gradDir = new Float32Array(total);
 
-    for (let i = 0; i < w * h; i++) {
-      const diff = g1[i] - gamma * g2[i];
-      if (diff < -tau) {
-        rawEdges[i] = 1;
+    for (let y = 1; y < h - 1; y++) {
+      const rowPrev = (y - 1) * w;
+      const rowCurr = y * w;
+      const rowNext = (y + 1) * w;
+
+      for (let x = 1; x < w - 1; x++) {
+        const idx = rowCurr + x;
+
+        // Sobel kernels for luminance
+        const gxY = (
+          -smoothGray[rowPrev + x - 1] + smoothGray[rowPrev + x + 1] +
+          -2 * smoothGray[rowCurr + x - 1] + 2 * smoothGray[rowCurr + x + 1] +
+          -smoothGray[rowNext + x - 1] + smoothGray[rowNext + x + 1]
+        );
+        const gyY = (
+          -smoothGray[rowPrev + x - 1] - 2 * smoothGray[rowPrev + x] - smoothGray[rowPrev + x + 1] +
+          smoothGray[rowNext + x - 1] + 2 * smoothGray[rowNext + x] + smoothGray[rowNext + x + 1]
+        );
+
+        // Chromatic color contrast (RGB Euclidean gradient)
+        const drX = smoothR[rowCurr + x + 1] - smoothR[rowCurr + x - 1];
+        const drY = smoothR[rowNext + x] - smoothR[rowPrev + x];
+        const dgX = smoothG[rowCurr + x + 1] - smoothG[rowCurr + x - 1];
+        const dgY = smoothG[rowNext + x] - smoothG[rowPrev + x];
+        const dbX = smoothB[rowCurr + x + 1] - smoothB[rowCurr + x - 1];
+        const dbY = smoothB[rowNext + x] - smoothB[rowPrev + x];
+
+        const lumMag = Math.sqrt(gxY * gxY + gyY * gyY);
+        const colMag = Math.sqrt(drX * drX + drY * drY + dgX * dgX + dgY * dgY + dbX * dbX + dbY * dbY);
+
+        gradMag[idx] = lumMag + colMag * 0.7;
+
+        let angle = (Math.atan2(gyY, gxY) * 180 / Math.PI);
+        if (angle < 0) angle += 180;
+        gradDir[idx] = angle;
       }
     }
 
-    // 5. Chromatic Boundary Enhancement: detects color boundaries with similar luminance
-    const rBlur = gaussianBlur1D(rChan, 1.5);
-    const gBlur = gaussianBlur1D(gChan, 1.5);
-    const bBlur = gaussianBlur1D(bChan, 1.5);
+    // 5. Non-Maximum Suppression (NMS) - Extracts sharp 1-pixel continuous ridge tops
+    const nms = new Float32Array(total);
 
     for (let y = 1; y < h - 1; y++) {
+      const rowCurr = y * w;
       for (let x = 1; x < w - 1; x++) {
-        const idx = y * w + x;
-        const drX = rBlur[idx + 1] - rBlur[idx - 1];
-        const drY = rBlur[idx + w] - rBlur[idx - w];
-        const dgX = gBlur[idx + 1] - gBlur[idx - 1];
-        const dgY = gBlur[idx + w] - gBlur[idx - w];
-        const dbX = bBlur[idx + 1] - bBlur[idx - 1];
-        const dbY = bBlur[idx + w] - bBlur[idx - w];
+        const idx = rowCurr + x;
+        const mag = gradMag[idx];
+        if (mag < 15) continue;
 
-        const colorGrad = Math.sqrt(
-          drX * drX + drY * drY +
-          dgX * dgX + dgY * dgY +
-          dbX * dbX + dbY * dbY
-        );
+        const angle = gradDir[idx];
+        let q = 0, r = 0;
 
-        if (colorGrad > 38) {
-          rawEdges[idx] = 1;
+        // Angle 0° (horizontal): compare with left and right
+        if ((angle >= 0 && angle < 22.5) || (angle >= 157.5 && angle <= 180)) {
+          q = gradMag[idx + 1];
+          r = gradMag[idx - 1];
+        }
+        // Angle 45°: compare with top-right and bottom-left
+        else if (angle >= 22.5 && angle < 67.5) {
+          q = gradMag[idx - w + 1];
+          r = gradMag[idx + w - 1];
+        }
+        // Angle 90° (vertical): compare with top and bottom
+        else if (angle >= 67.5 && angle < 112.5) {
+          q = gradMag[idx - w];
+          r = gradMag[idx + w];
+        }
+        // Angle 135°: compare with top-left and bottom-right
+        else if (angle >= 112.5 && angle < 157.5) {
+          q = gradMag[idx - w - 1];
+          r = gradMag[idx + w + 1];
+        }
+
+        if (mag >= q && mag >= r) {
+          nms[idx] = mag;
         }
       }
     }
 
-    // 6. Anti-Clutter & Texture Suppression:
-    // Prevents dense textures (grass, fur, shadow stippling) from forming solid black blotches
-    const cleanedEdges = new Uint8Array(w * h);
-    const rWin = 5; // 11x11 window
-    const integral = new Int32Array((w + 1) * (h + 1));
+    // 6. Adaptive Hysteresis Thresholding (Eliminates broken dashes & links continuous outlines)
+    const validNms = [];
+    for (let i = 0; i < total; i += 4) {
+      if (nms[i] > 14) validNms.push(nms[i]);
+    }
+    validNms.sort((a, b) => a - b);
 
+    const pHigh = Math.floor(validNms.length * 0.89);
+    const highThresh = validNms.length > 0 ? Math.max(38, validNms[pHigh]) : 50;
+    const lowThresh = highThresh * 0.38;
+
+    const edgeMap = new Uint8Array(total);
+    const queue = [];
+
+    for (let i = 0; i < total; i++) {
+      const val = nms[i];
+      if (val >= highThresh) {
+        edgeMap[i] = 2; // Strong definitive edge
+        queue.push(i);
+      } else if (val >= lowThresh) {
+        edgeMap[i] = 1; // Weak candidate edge
+      }
+    }
+
+    // Breadth-first edge linking: connects and preserves weak edges touching strong edges
+    let head = 0;
+    const neighbors = [-w - 1, -w, -w + 1, -1, 1, w - 1, w, w + 1];
+
+    while (head < queue.length) {
+      const curr = queue[head++];
+      const cx = curr % w;
+      const cy = Math.floor(curr / w);
+      if (cx <= 1 || cx >= w - 2 || cy <= 1 || cy >= h - 2) continue;
+
+      for (let k = 0; k < 8; k++) {
+        const nIdx = curr + neighbors[k];
+        if (edgeMap[nIdx] === 1) {
+          edgeMap[nIdx] = 2; // Promote to valid edge
+          queue.push(nIdx);
+        }
+      }
+    }
+
+    // 7. Morphological Dilation (1px cross kernel) for smooth, bold, leak-proof closed contours
+    const boldOutline = new Uint8Array(total);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (edgeMap[idx] === 2) {
+          boldOutline[idx] = 1;
+          boldOutline[idx - 1] = 1;
+          boldOutline[idx + 1] = 1;
+          boldOutline[idx - w] = 1;
+          boldOutline[idx + w] = 1;
+        }
+      }
+    }
+
+    // 8. Draw clean border frame so flood filling cannot leak outside
+    for (let x = 0; x < w; x++) {
+      boldOutline[x] = 1;
+      boldOutline[w + x] = 1;
+      boldOutline[(h - 1) * w + x] = 1;
+      boldOutline[(h - 2) * w + x] = 1;
+    }
     for (let y = 0; y < h; y++) {
-      let rowSum = 0;
-      for (let x = 0; x < w; x++) {
-        rowSum += rawEdges[y * w + x];
-        integral[(y + 1) * (w + 1) + (x + 1)] = integral[y * (w + 1) + (x + 1)] + rowSum;
-      }
+      boldOutline[y * w] = 1;
+      boldOutline[y * w + 1] = 1;
+      boldOutline[y * w + (w - 1)] = 1;
+      boldOutline[y * w + (w - 2)] = 1;
     }
 
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const idx = y * w + x;
-        if (!rawEdges[idx]) continue;
-
-        const x0 = Math.max(0, x - rWin);
-        const y0 = Math.max(0, y - rWin);
-        const x1 = Math.min(w, x + rWin + 1);
-        const y1 = Math.min(h, y + rWin + 1);
-
-        const count = (
-          integral[y1 * (w + 1) + x1] -
-          integral[y0 * (w + 1) + x1] -
-          integral[y1 * (w + 1) + x0] +
-          integral[y0 * (w + 1) + x0]
-        );
-
-        const currentArea = (x1 - x0) * (y1 - y0);
-        const density = count / currentArea;
-
-        // Suppress if local region is overcrowded with edge noise (> 35% density)
-        if (density < 0.35) {
-          cleanedEdges[idx] = 1;
-        }
-      }
-    }
-
-    // 7. Despeckle: Remove single isolated noise specks (< 2 neighbors)
-    const finalEdges = new Uint8Array(w * h);
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const idx = y * w + x;
-        if (!cleanedEdges[idx]) continue;
-
-        const neighbors = (
-          cleanedEdges[idx - w - 1] + cleanedEdges[idx - w] + cleanedEdges[idx - w + 1] +
-          cleanedEdges[idx - 1]     +                         cleanedEdges[idx + 1] +
-          cleanedEdges[idx + w - 1] + cleanedEdges[idx + w] + cleanedEdges[idx + w + 1]
-        );
-
-        if (neighbors >= 2) {
-          finalEdges[idx] = 1;
-        }
-      }
-    }
-
-    // 8. Controlled 1px Outline Thickening (continuous lines for leak-proof flood filling)
-    const smoothOutline = new Uint8Array(w * h);
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const idx = y * w + x;
-        if (
-          finalEdges[idx] ||
-          finalEdges[idx - 1] || finalEdges[idx + 1] ||
-          finalEdges[idx - w] || finalEdges[idx + w]
-        ) {
-          smoothOutline[idx] = 1;
-        }
-      }
-    }
-
-    // 9. Write crisp charcoal outlines (#1e293b) on pure white paper (#ffffff)
+    // 9. Write crisp dark charcoal outlines (#181e28) on pure white paper (#ffffff)
     const output = ctx.createImageData(w, h);
     const outData = output.data;
 
-    for (let i = 0; i < w * h; i++) {
+    for (let i = 0; i < total; i++) {
       const idx = i * 4;
-      if (smoothOutline[i]) {
-        // Deep crisp charcoal outline
-        outData[idx] = 25;
+      if (boldOutline[i]) {
+        // Deep crisp charcoal outline (luminance < 55 for flood-fill boundary detection)
+        outData[idx] = 24;
         outData[idx + 1] = 30;
-        outData[idx + 2] = 35;
+        outData[idx + 2] = 40;
         outData[idx + 3] = 255;
       } else {
         // Pure white colorable canvas
