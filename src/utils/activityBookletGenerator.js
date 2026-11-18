@@ -137,7 +137,7 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
 
     // Helper: Fast Separable 1D Gaussian Blur for noise suppression
     function gaussianBlur1D(src, sigma) {
-      const radius = Math.ceil(sigma * 2.5);
+      const radius = Math.max(1, Math.ceil(sigma * 2.5));
       const size = radius * 2 + 1;
       const kernel = new Float32Array(size);
       let ksum = 0;
@@ -176,10 +176,45 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
       return dst;
     }
 
-    const smoothGray = gaussianBlur1D(gray, 1.3);
-    const smoothR = gaussianBlur1D(rChan, 1.3);
-    const smoothG = gaussianBlur1D(gChan, 1.3);
-    const smoothB = gaussianBlur1D(bChan, 1.3);
+    // Bilateral/surface smoothing to flatten ground, clothing, and wall textures while preserving strong outlines
+    function bilateralSmooth(src, grayRef, radius, spatialSigma, rangeSigma) {
+      const dst = new Float32Array(total);
+      const twoSpatial2 = 2 * spatialSigma * spatialSigma;
+      const twoRange2 = 2 * rangeSigma * rangeSigma;
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const cIdx = y * w + x;
+          const cVal = grayRef[cIdx];
+          let acc = 0;
+          let wSum = 0;
+
+          for (let dy = -radius; dy <= radius; dy++) {
+            const ny = Math.min(h - 1, Math.max(0, y + dy));
+            const row = ny * w;
+            for (let dx = -radius; dx <= radius; dx++) {
+              const nx = Math.min(w - 1, Math.max(0, x + dx));
+              const nIdx = row + nx;
+
+              const dSpatial2 = dx * dx + dy * dy;
+              const dRange = cVal - grayRef[nIdx];
+              const weight = Math.exp(-dSpatial2 / twoSpatial2 - (dRange * dRange) / twoRange2);
+
+              acc += src[nIdx] * weight;
+              wSum += weight;
+            }
+          }
+          dst[cIdx] = acc / wSum;
+        }
+      }
+      return dst;
+    }
+
+    const bGray = bilateralSmooth(gray, gray, 2, 2.0, 30.0);
+    const smoothGray = gaussianBlur1D(bGray, 1.4);
+    const smoothR = gaussianBlur1D(rChan, 1.4);
+    const smoothG = gaussianBlur1D(gChan, 1.4);
+    const smoothB = gaussianBlur1D(bChan, 1.4);
 
     // 4. Multi-channel Sobel Gradients (Luminance + Color boundaries)
     const gradMag = new Float32Array(total);
@@ -231,7 +266,7 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
       for (let x = 1; x < w - 1; x++) {
         const idx = rowCurr + x;
         const mag = gradMag[idx];
-        if (mag < 15) continue;
+        if (mag < 18) continue;
 
         const angle = gradDir[idx];
         let q = 0, r = 0;
@@ -266,13 +301,13 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
     // 6. Adaptive Hysteresis Thresholding (Eliminates broken dashes & links continuous outlines)
     const validNms = [];
     for (let i = 0; i < total; i += 4) {
-      if (nms[i] > 14) validNms.push(nms[i]);
+      if (nms[i] > 18) validNms.push(nms[i]);
     }
     validNms.sort((a, b) => a - b);
 
-    const pHigh = Math.floor(validNms.length * 0.89);
-    const highThresh = validNms.length > 0 ? Math.max(38, validNms[pHigh]) : 50;
-    const lowThresh = highThresh * 0.38;
+    const p80 = Math.floor(validNms.length * 0.80);
+    const highThresh = validNms.length > 0 ? Math.max(70, validNms[p80]) : 85;
+    const lowThresh = Math.max(22, highThresh * 0.30);
 
     const edgeMap = new Uint8Array(total);
     const queue = [];
@@ -306,22 +341,86 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
       }
     }
 
-    // 7. Morphological Dilation (1px cross kernel) for smooth, bold, leak-proof closed contours
-    const boldOutline = new Uint8Array(total);
+    // 7. Morphological Gap-Closing (Dilate 3x3, then Cross-Erode)
+    // Bridges broken dashes into unbroken continuous contours
+    const dil = new Uint8Array(total);
     for (let y = 1; y < h - 1; y++) {
+      const rC = y * w;
       for (let x = 1; x < w - 1; x++) {
-        const idx = y * w + x;
-        if (edgeMap[idx] === 2) {
-          boldOutline[idx] = 1;
-          boldOutline[idx - 1] = 1;
-          boldOutline[idx + 1] = 1;
-          boldOutline[idx - w] = 1;
-          boldOutline[idx + w] = 1;
+        const idx = rC + x;
+        if (edgeMap[idx] === 2 ||
+            edgeMap[idx - 1] === 2 || edgeMap[idx + 1] === 2 ||
+            edgeMap[idx - w] === 2 || edgeMap[idx + w] === 2 ||
+            edgeMap[idx - w - 1] === 2 || edgeMap[idx - w + 1] === 2 ||
+            edgeMap[idx + w - 1] === 2 || edgeMap[idx + w + 1] === 2) {
+          dil[idx] = 1;
         }
       }
     }
 
-    // 8. Draw clean border frame so flood filling cannot leak outside
+    const closed = new Uint8Array(total);
+    for (let y = 1; y < h - 1; y++) {
+      const rC = y * w;
+      for (let x = 1; x < w - 1; x++) {
+        const idx = rC + x;
+        if (dil[idx] && dil[idx - 1] && dil[idx + 1] && dil[idx - w] && dil[idx + w]) {
+          closed[idx] = 1;
+        } else if (edgeMap[idx] === 2) {
+          closed[idx] = 1;
+        }
+      }
+    }
+
+    // 8. Connected Component Analysis (Filter small noise debris & speckles < 55 px)
+    const visited = new Uint8Array(total);
+    const cleanLines = new Uint8Array(total);
+
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const sIdx = y * w + x;
+        if (closed[sIdx] && !visited[sIdx]) {
+          const comp = [sIdx];
+          visited[sIdx] = 1;
+          let qH = 0;
+
+          while (qH < comp.length) {
+            const c = comp[qH++];
+            const cx = c % w;
+            const cy = Math.floor(c / w);
+            if (cx <= 1 || cx >= w - 2 || cy <= 1 || cy >= h - 2) continue;
+
+            const nbs = [c - 1, c + 1, c - w, c + w, c - w - 1, c - w + 1, c + w - 1, c + w + 1];
+            for (let k = 0; k < 8; k++) {
+              const n = nbs[k];
+              if (closed[n] && !visited[n]) {
+                visited[n] = 1;
+                comp.push(n);
+              }
+            }
+          }
+
+          if (comp.length >= 55) {
+            for (let k = 0; k < comp.length; k++) {
+              cleanLines[comp[k]] = 1;
+            }
+          }
+        }
+      }
+    }
+
+    // 9. Bold 1px Cross Dilation for smooth, bold, leak-proof 2-3px contours
+    const boldOutline = new Uint8Array(total);
+    for (let y = 1; y < h - 1; y++) {
+      const rC = y * w;
+      for (let x = 1; x < w - 1; x++) {
+        const idx = rC + x;
+        if (cleanLines[idx] || cleanLines[idx - 1] || cleanLines[idx + 1] || cleanLines[idx - w] || cleanLines[idx + w]) {
+          boldOutline[idx] = 1;
+        }
+      }
+    }
+
+    // 10. Draw clean border frame so flood filling cannot leak outside
     for (let x = 0; x < w; x++) {
       boldOutline[x] = 1;
       boldOutline[w + x] = 1;
@@ -335,7 +434,7 @@ export async function convertImageToLineArt(input, targetWidth = 1000, targetHei
       boldOutline[y * w + (w - 2)] = 1;
     }
 
-    // 9. Write crisp dark charcoal outlines (#181e28) on pure white paper (#ffffff)
+    // 11. Write crisp dark charcoal outlines (#181e28) on pure white paper (#ffffff)
     const output = ctx.createImageData(w, h);
     const outData = output.data;
 
