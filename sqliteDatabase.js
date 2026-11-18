@@ -56,8 +56,9 @@ let readDBInstance = null;
 let writeDBInstance = null;
 
 if (DatabaseEngine) {
-  const db = new DatabaseEngine(DB_SQLITE_FILE);
-  try { db.exec('PRAGMA journal_mode = WAL;'); } catch (_) {}
+  try {
+    const db = new DatabaseEngine(DB_SQLITE_FILE);
+    try { db.exec('PRAGMA journal_mode = WAL;'); } catch (_) {}
   try { db.exec('PRAGMA synchronous = NORMAL;'); } catch (_) {}
   try { db.exec('PRAGMA foreign_keys = ON;'); } catch (_) {}
 
@@ -310,26 +311,59 @@ if (DatabaseEngine) {
 
   writeDBInstance = function(data) {
     if (!data) return;
-    if (data.settings) sqliteDBInstance.saveSettings(data.settings);
-    if (Array.isArray(data.categories)) {
-      for (const c of data.categories) sqliteDBInstance.saveCategory(c);
-    }
-    if (Array.isArray(data.users)) {
-      for (const u of data.users) sqliteDBInstance.saveUser(u);
-    }
-    if (Array.isArray(data.stories)) {
-      for (const s of data.stories) sqliteDBInstance.saveStory(s);
-    }
-    if (Array.isArray(data.roleRequests)) {
-      for (const r of data.roleRequests) sqliteDBInstance.saveRoleRequest(r);
-    }
-    if (Array.isArray(data.transactions)) {
-      for (const t of data.transactions) sqliteDBInstance.saveTransaction(t);
+    try { db.exec('BEGIN TRANSACTION;'); } catch (_) {}
+    try {
+      if (data.settings) stmts.setSetting.run('general', JSON.stringify(data.settings));
+      if (Array.isArray(data.categories)) {
+        for (const c of data.categories) {
+          const rawTitle = c.title || c.titleAr || c.name || '';
+          const title = typeof rawTitle === 'object' ? (rawTitle.ar || rawTitle.en || JSON.stringify(rawTitle)) : String(rawTitle);
+          stmts.upsertCategory.run(String(c.id), title, JSON.stringify(c));
+        }
+      }
+      if (Array.isArray(data.users)) {
+        for (const u of data.users) {
+          const email = (u.email || '').toLowerCase().trim();
+          const role = String(u.role || 'Student');
+          const now = Date.now();
+          stmts.upsertUser.run(String(u.id), email, role, JSON.stringify(u), Number(u.createdAt || now), Number(u.updatedAt || now));
+        }
+      }
+      if (Array.isArray(data.stories)) {
+        for (const s of data.stories) {
+          const userId = String(s.userId || s.authorId || 'anonymous');
+          const cat = String(s.category || 'general');
+          const status = String(s.status || 'published');
+          const now = Date.now();
+          stmts.upsertStory.run(String(s.id), userId, cat, status, JSON.stringify(s), Number(s.createdAt || now), Number(s.updatedAt || now));
+        }
+      }
+      if (Array.isArray(data.roleRequests)) {
+        for (const r of data.roleRequests) {
+          stmts.upsertRoleRequest.run(String(r.id), String(r.userId || ''), String(r.status || 'pending'), JSON.stringify(r), Number(r.createdAt || Date.now()));
+        }
+      }
+      if (Array.isArray(data.transactions)) {
+        for (const t of data.transactions) {
+          stmts.upsertTransaction.run(String(t.id), String(t.userId || ''), JSON.stringify(t), Number(t.createdAt || Date.now()));
+        }
+      }
+      try { db.exec('COMMIT;'); } catch (_) {}
+    } catch (txErr) {
+      try { db.exec('ROLLBACK;'); } catch (_) {}
+      console.warn('[SQLite Engine] Batch write rollback:', txErr.message);
     }
     writeJsonBackup(data);
   };
 
-} else {
+    console.log(`[Database Engine] Initialized SQLite persistence successfully (${engineType}).`);
+  } catch (initErr) {
+    console.warn('[Database Engine] SQLite initialization failed, falling back to In-Memory Engine:', initErr.message);
+    sqliteDBInstance = null;
+  }
+}
+
+if (!sqliteDBInstance) {
   // -------------------------------------------------------------
   // Implementation: In-Memory Indexed Engine with Atomic POSIX Writes
   // -------------------------------------------------------------

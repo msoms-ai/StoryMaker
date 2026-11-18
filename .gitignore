@@ -19,7 +19,7 @@ scratch/
 Features/
 
 # Builds and production output
-dist/
+# dist/ is intentionally tracked so Plesk/production receives pre-built assets
 build/
 .temp_test_subs/
 *.apk

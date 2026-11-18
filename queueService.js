@@ -14,14 +14,15 @@ const connection = new IORedis(REDIS_URL, {
   enableOfflineQueue: true,
   connectTimeout: 5000,
   retryStrategy(times) {
-    if (times > 5) {
+    if (times > 3) {
       // Don't flood logs if redis isn't running
-      return 5000;
+      return 30000;
     }
-    return Math.min(times * 100, 2000);
+    return Math.min(times * 300, 2000);
   }
 });
 
+let lastRedisNotice = 0;
 connection.on('ready', () => {
   isRedisConnected = true;
   console.log('[Redis] Connected and ready on', REDIS_URL);
@@ -29,7 +30,10 @@ connection.on('ready', () => {
 
 connection.on('error', (err) => {
   isRedisConnected = false;
-  console.warn('[Redis] Connection warning: Redis unavailable or reconnecting. Fallback worker active.');
+  if (Date.now() - lastRedisNotice > 60000) {
+    console.warn('[Redis] Connection notice: Redis server is offline. Local in-process background worker is active.');
+    lastRedisNotice = Date.now();
+  }
 });
 
 export const storyQueue = new Queue('story-generation', { connection });
@@ -188,8 +192,12 @@ export function startWorker(generateLogicCallback) {
     console.warn(`[Worker] Job ${jobId} was detected stalled after restart and will be reprocessed.`);
   });
 
+  let lastWorkerErrorLog = 0;
   worker.on('error', (err) => {
-    console.warn(`[Worker] Worker redis connection notice:`, err?.message || err);
+    if (Date.now() - lastWorkerErrorLog > 60000) {
+      console.warn(`[Worker] Worker redis connection notice (in-process fallback active):`, err?.message || err);
+      lastWorkerErrorLog = Date.now();
+    }
   });
 
   // Re-sync pending or active jobs from Redis on startup
@@ -271,8 +279,12 @@ export function startWorker(generateLogicCallback) {
       console.error(`[BullMQ Video Worker] Video failed for ${sId}:`, err.message);
     });
 
+    let lastVideoWorkerErrorLog = 0;
     videoWorker.on('error', (err) => {
-      console.error('[BullMQ Video Worker] Worker error:', err.message);
+      if (Date.now() - lastVideoWorkerErrorLog > 60000) {
+        console.warn('[BullMQ Video Worker] Notice (in-process fallback active):', err?.message || err);
+        lastVideoWorkerErrorLog = Date.now();
+      }
     });
   } catch (err) {
     console.warn('[Queue] Video worker init notice:', err.message);
