@@ -1,0 +1,34 @@
+name: Qisas CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, v1.3, v1.4 ]
+  pull_request:
+    branches: [ main, master, v1.3, v1.4 ]
+
+jobs:
+  test-and-build:
+    name: Test, Validate & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Automated Unit Tests (18 Security & Data Tests)
+        run: npm test
+
+      - name: Verify Production Vite Build
+        run: npm run build
+
+      - name: Security Verification Summary
+        run: echo "CI/CD checks passed successfully with zero errors."

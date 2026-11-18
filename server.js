@@ -17,6 +17,7 @@ import { startWorker, addStoryJob, jobStatusStore, getStoryJobStatus, addVideoJo
 import { processStoryGeneration } from './generationWorker.js';
 
 import multer from 'multer';
+import { documentFileFilter, teacherProofFileFilter, sanitizePromptInput, sanitizePathSegment } from './securityGuards.js';
 
 try {
   startWorker(processStoryGeneration);
@@ -34,7 +35,12 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const upload = multer({ dest: 'uploads/' });
+// Secure document upload (PDF, TXT) with 10MB limit and strict MIME validation
+const upload = multer({
+  dest: 'uploads/',
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB maximum limit
+  fileFilter: documentFileFilter
+});
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -1092,7 +1098,8 @@ const teacherIdStorage = multer.diskStorage({
 
 const teacherIdUpload = multer({
   storage: teacherIdStorage,
-  limits: { fileSize: 2 * 1024 * 1024 }
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: teacherProofFileFilter
 });
 
 // POST /api/user/request-story-maker - Apply for Teacher role
@@ -1871,9 +1878,12 @@ app.delete('/api/admin/categories/:id', authenticateUser, requireRole('Admin'), 
 // 5. FILE EXTRACTION & STORY CREATION ENGINE
 // -------------------------------------------------------------
 
-// POST /api/upload - Extract text from PDF / TXT / Word files with Gemini Vision OCR fallback
-app.post('/api/upload', upload.single('file'), async (req, res) => {
-  try {
+// POST /api/upload - Extract text from PDF / TXT files with Gemini Vision OCR fallback
+app.post('/api/upload', (req, res) => {
+  upload.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ success: false, message: uploadErr.message });
+    }
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
@@ -1882,73 +1892,73 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const originalName = req.file.originalname.toLowerCase();
     let extractedText = '';
 
-    if (originalName.endsWith('.pdf')) {
-      const dataBuffer = fs.readFileSync(filePath);
-      try {
-        const parsedData = await pdfParse(dataBuffer);
-        extractedText = (parsedData.text || '').trim();
-      } catch (e) {
-        console.warn(`[File Extractor] pdf-parse notice: ${e.message}`);
-      }
-
-      if (extractedText.length < 50 && process.env.GEMINI_API_KEY) {
-        console.log(`[File Extractor] Using Gemini Multimodal OCR Vision API to extract text from PDF...`);
+    try {
+      if (originalName.endsWith('.pdf')) {
+        const dataBuffer = fs.readFileSync(filePath);
         try {
-          const pdfBase64 = dataBuffer.toString('base64');
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
-          const visionRes = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: 'application/pdf',
-                      data: pdfBase64
-                    }
-                  },
-                  {
-                    text: 'You are an expert OCR document reader. Extract 100% of the verbatim Arabic story text printed on this document page. Output ONLY the raw story text verbatim without commentary.'
-                  }
-                ]
-              }]
-            })
-          });
-
-          if (visionRes.ok) {
-            const visionData = await visionRes.json();
-            const ocrText = visionData.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (ocrText && ocrText.length > 50) {
-              extractedText = ocrText.trim();
-              console.log(`[File Extractor] Successfully extracted ${extractedText.length} chars via Gemini OCR Vision!`);
-            } else {
-              console.log(`[File Extractor] Gemini OCR returned short text:`, ocrText);
-            }
-          } else {
-            const errorText = await visionRes.text();
-            console.error(`[File Extractor] Gemini Vision OCR failed: ${visionRes.status} ${visionRes.statusText}`, errorText);
-          }
-        } catch (visionErr) {
-          console.warn(`[File Extractor] Gemini Vision OCR notice: ${visionErr.message}`);
+          const parsedData = await pdfParse(dataBuffer);
+          extractedText = (parsedData.text || '').trim();
+        } catch (e) {
+          console.warn(`[File Extractor] pdf-parse notice: ${e.message}`);
         }
+
+        if (extractedText.length < 50 && process.env.GEMINI_API_KEY) {
+          console.log(`[File Extractor] Using Gemini Multimodal OCR Vision API to extract text from PDF...`);
+          try {
+            const pdfBase64 = dataBuffer.toString('base64');
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+            const visionRes = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: 'application/pdf',
+                        data: pdfBase64
+                      }
+                    },
+                    {
+                      text: 'You are an expert OCR document reader. Extract 100% of the verbatim Arabic story text printed on this document page. Output ONLY the raw story text verbatim without commentary.'
+                    }
+                  ]
+                }]
+              })
+            });
+
+            if (visionRes.ok) {
+              const visionData = await visionRes.json();
+              const ocrText = visionData.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (ocrText && ocrText.length > 50) {
+                extractedText = ocrText.trim();
+                console.log(`[File Extractor] Successfully extracted ${extractedText.length} chars via Gemini OCR Vision!`);
+              }
+            }
+          } catch (visionErr) {
+            console.warn(`[File Extractor] Gemini Vision OCR notice: ${visionErr.message}`);
+          }
+        }
+      } else {
+        extractedText = fs.readFileSync(filePath, 'utf-8');
       }
-    } else {
-      extractedText = fs.readFileSync(filePath, 'utf-8');
+
+      console.log(`[File Extractor] Successfully extracted ${extractedText.length} characters from ${originalName}`);
+      res.json({
+        success: true,
+        text: extractedText,
+        fileName: req.file.originalname
+      });
+    } catch (err) {
+      console.error('[File Extractor Error]:', err);
+      res.status(500).json({ success: false, message: 'Failed to extract text' });
+    } finally {
+      // Guarantee temporary file is deleted from disk
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) {}
+      }
     }
-
-    fs.unlinkSync(filePath);
-
-    console.log(`[File Extractor] Successfully extracted ${extractedText.length} characters from ${originalName}`);
-    res.json({
-      success: true,
-      text: extractedText,
-      fileName: req.file.originalname
-    });
-  } catch (err) {
-    console.error('[File Extractor Error]:', err);
-    res.status(500).json({ success: false, message: 'Failed to extract text' });
-  }
+  });
 });
 
 // GET /api/categories
