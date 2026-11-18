@@ -18,6 +18,7 @@ import { processStoryGeneration } from './generationWorker.js';
 
 import multer from 'multer';
 import { documentFileFilter, teacherProofFileFilter, sanitizePromptInput, sanitizePathSegment } from './securityGuards.js';
+import { sqliteDB, readDB, writeDB } from './sqliteDatabase.js';
 
 try {
   startWorker(processStoryGeneration);
@@ -382,31 +383,10 @@ function initDatabase() {
     });
   }
 
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+  writeDB(db);
 }
 
 initDatabase();
-
-function readDB() {
-  try {
-    const raw = fs.readFileSync(DB_FILE, 'utf-8');
-    return JSON.parse(raw);
-  } catch (err) {
-    return {
-      settings: DEFAULT_SETTINGS,
-      categories: DEFAULT_CATEGORIES,
-      roles: DEFAULT_ROLES,
-      users: [],
-      stories: [],
-      roleRequests: [],
-      transactions: []
-    };
-  }
-}
-
-function writeDB(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
-}
 
 function sanitizeUser(user) {
   if (!user) return null;

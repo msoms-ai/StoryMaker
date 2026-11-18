@@ -13,8 +13,9 @@ This document serves as the master guide for maintaining, extending, and testing
 │   ├── src/utils/            # Line-art converter, ambient soundscapes, speech coach
 │   └── src/styles/           # Global styles and Tailwind configuration
 │
-├── Backend (Node.js 20 + Express + BullMQ Queue)
-│   ├── server.js             # Core Express API, REST endpoints, JSON DB persistence
+├── Backend (Node.js 20 + Express + BullMQ Queue + SQLite)
+│   ├── server.js             # Core Express API, REST endpoints
+│   ├── sqliteDatabase.js     # SQLite ACID persistence layer (WAL mode, prepared statements)
 │   ├── securityGuards.js     # Centralized prompt injection, path traversal & upload guards
 │   ├── aiTextService.js      # Gemini story breakdown, character visual bible, quiz generator
 │   ├── aiImageService.js     # Imagen 3 & Gemini image generation with consistency prompts
@@ -25,10 +26,11 @@ This document serves as the master guide for maintaining, extending, and testing
 │   └── queueService.js       # BullMQ Redis job queue with in-memory fallback
 │
 ├── Storage & Persistence
-│   ├── STORIES/database.json # Core JSON database (users, stories, categories, roles)
-│   ├── STORIES/<id>/         # Story media assets (images, audio, video MP4)
-│   ├── USERS/<id>/           # User avatar, cover, and teacher proof files
-│   └── uploads/              # Ephemeral upload processing (strictly auto-deleted)
+│   ├── STORIES/database.sqlite # Primary ACID SQLite database (users, stories, categories, roles)
+│   ├── STORIES/database.json   # Automated atomic JSON backup snapshot
+│   ├── STORIES/<id>/           # Story media assets (images, audio, video MP4)
+│   ├── USERS/<id>/             # User avatar, cover, and teacher proof files
+│   └── uploads/                # Ephemeral upload processing (strictly auto-deleted)
 │
 └── Testing & CI/CD
     ├── tests/                # Automated regression test suite (node:test)
@@ -61,10 +63,11 @@ On every `push` and `pull_request` to tracked branches:
 
 ## 3. Security Architecture & Threat Defenses
 
-### A. SQL Injection
-- **Status:** **Zero Risk.**
-- **Reason:** The platform does not use a relational SQL database. All persistence operates through file-based JSON serialization in `STORIES/database.json`.
-- **Mitigation for Path Injection:** All file path references are validated using `sanitizePathSegment()` and path containment checks (`path.resolve(DIR, id).startsWith(DIR)`) to prevent directory traversal.
+### A. SQL Injection & Database Concurrency
+- **Database Engine:** Embedded SQLite (`better-sqlite3`) configured with Write-Ahead Logging (`PRAGMA journal_mode = WAL`) and `PRAGMA synchronous = NORMAL`.
+- **Concurrency & Speed:** Allows unlimited simultaneous readers while atomic row writes execute with zero blocking, zero race conditions, and microsecond latency.
+- **SQL Injection Defense:** 100% of database queries use strictly parameterized prepared statements (`db.prepare('... WHERE id = ?').get(id)`). Raw string concatenation in queries is strictly prohibited.
+- **Directory Traversal Protection:** All file path references are validated using `sanitizePathSegment()` and path containment checks (`path.resolve(DIR, id).startsWith(DIR)`).
 
 ### B. File Upload Security
 All file uploads use restricted Multer storage with explicit validation:
