@@ -166,10 +166,11 @@ export default function BranchingChoiceModal({
   onChoiceSelected,
   lang = 'ar'
 }) {
-  const { token } = useAuth();
+  const { token, openAuthModal } = useAuth();
   const isArabic = lang === 'ar';
   const isRtl = isArabic;
 
+  const [requiresAuth, setRequiresAuth] = useState(false);
   const [loadingChoices, setLoadingChoices] = useState(true);
   const [choices, setChoices] = useState([]);
   const [selectedChoiceId, setSelectedChoiceId] = useState(null);
@@ -184,12 +185,20 @@ export default function BranchingChoiceModal({
   useEffect(() => {
     if (!isOpen || !story) return;
 
+    if (!token) {
+      setRequiresAuth(true);
+      setLoadingChoices(false);
+      return;
+    }
+
+    setRequiresAuth(false);
     setLoadingChoices(true);
     setSelectedChoiceId(null);
     setErrorMessage('');
     setTimeLeft(30);
     setIsGeneratingScene(false);
 
+    const currentSlide = story.slides?.[currentSlideIdx] || null;
     const storyTitle = (typeof story.name === 'object' && story.name
       ? (story.name[lang] || story.name.ar || story.name.en)
       : story.name) || story.title || '';
@@ -198,37 +207,53 @@ export default function BranchingChoiceModal({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({
         slideIndex: currentSlideIdx,
         storyTitle,
+        currentSlide,
         slides: story.slides,
         lang
       })
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (res.status === 401) {
+          setRequiresAuth(true);
+          setLoadingChoices(false);
+          return null;
+        }
+        return res.json();
+      })
       .then((data) => {
+        if (!data) return;
+        if (data.requireAuth) {
+          setRequiresAuth(true);
+          setLoadingChoices(false);
+          return;
+        }
         if (data.success && Array.isArray(data.choices) && data.choices.length >= 2) {
           setChoices(data.choices);
         } else {
-          // Fallback choices
+          // Dynamic contextual fallback based on the specific current slide
+          const currentText = (currentSlide?.text || currentSlide?.title || '').trim();
+          const snippet = currentText ? currentText.slice(0, 32) : '';
           setChoices([
             {
               id: 'a',
-              titleAr: 'اسْتِكْشَافُ المَسَارِ المَجْهُولِ',
-              titleEn: 'Explore the Mysterious Path',
-              descriptionAr: 'التَّقَدُّمُ بِشَجَاعَةٍ نَحْوَ المَمَرِّ السِّرِّيِّ المَلِيءِ بِالأَلْغَازِ وَالمُفَاجَآتِ.',
-              descriptionEn: 'Venture courageously toward the secret pathway filled with puzzles and surprises.',
+              titleAr: snippet ? `متابعة استكشاف (${snippet}...)` : 'خوض المغامرة الجريئة',
+              titleEn: 'Bold Adventure Path',
+              descriptionAr: 'الانطلاق بشجاعة لمواجهة ما سيحدث بعد ذلك.',
+              descriptionEn: 'Embark on a bold new path full of discoveries.',
               iconName: 'Compass'
             },
             {
               id: 'b',
-              titleAr: 'اتِّبَاعُ النُّورِ السِّحْرِيِّ وَالدَّلِيلِ',
-              titleEn: 'Follow the Magical Light & Clues',
-              descriptionAr: 'تَتَبُّعُ ضَوْءٍ بَرَّاقٍ يَرْسُمُ طَرِيقًا آمِنًا وَيَفْتَحُ أَبْوَابَ الحِكْمَةِ.',
-              descriptionEn: 'Follow a shimmering light that maps a safe trail and opens doors of wisdom.',
-              iconName: 'Sparkles'
+              titleAr: snippet ? `التفكير بحكمة في (${snippet}...)` : 'اتباع الدليل الحكيم',
+              titleEn: 'Wise Guidance Path',
+              descriptionAr: 'التأني والبحث عن إشارات ذكية ومساعدة الأصدقاء.',
+              descriptionEn: 'Search for clever clues and guidance.',
+              iconName: 'Lightbulb'
             }
           ]);
         }
@@ -236,27 +261,9 @@ export default function BranchingChoiceModal({
       })
       .catch((err) => {
         console.warn('Branch choices request notice:', err);
-        setChoices([
-          {
-            id: 'a',
-            titleAr: 'اسْتِكْشَافُ المَسَارِ المَجْهُولِ',
-            titleEn: 'Explore the Mysterious Path',
-            descriptionAr: 'التَّقَدُّمُ بِشَجَاعَةٍ نَحْوَ المَمَرِّ السِّرِّيِّ المَلِيءِ بِالأَلْغَازِ وَالمُفَاجَآتِ.',
-            descriptionEn: 'Venture courageously toward the secret pathway filled with puzzles and surprises.',
-            iconName: 'Compass'
-          },
-          {
-            id: 'b',
-            titleAr: 'اتِّبَاعُ النُّورِ السِّحْرِيِّ وَالدَّلِيلِ',
-            titleEn: 'Follow the Magical Light & Clues',
-            descriptionAr: 'تَتَبُّعُ ضَوْءٍ بَرَّاقٍ يَرْسُمُ طَرِيقًا آمِنًا وَيَفْتَحُ أَبْوَابَ الحِكْمَةِ.',
-            descriptionEn: 'Follow a shimmering light that maps a safe trail and opens doors of wisdom.',
-            iconName: 'Sparkles'
-          }
-        ]);
         setLoadingChoices(false);
       });
-  }, [isOpen, story, currentSlideIdx, lang]);
+  }, [isOpen, story, currentSlideIdx, lang, token]);
 
   // Decision Timer Countdown
   useEffect(() => {
@@ -437,8 +444,41 @@ export default function BranchingChoiceModal({
           </div>
         </div>
 
-        {/* Main Content: Loading State vs 2 Cards */}
-        {loadingChoices ? (
+        {/* Main Content: Requires Auth vs Loading State vs 2 Cards */}
+        {requiresAuth ? (
+          <div className="py-12 px-4 flex flex-col items-center justify-center text-center space-y-5">
+            <div className="w-16 h-16 rounded-3xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shadow-lg text-amber-400">
+              <Sparkles className="w-8 h-8 animate-pulse" />
+            </div>
+            <div className="space-y-2 max-w-md">
+              <h3 className="text-xl sm:text-2xl font-black text-amber-300">
+                {isArabic ? 'سجّل دخولك لمتابعة المغامرة التفاعلية!' : 'Sign In to Unlock Interactive Branching!'}
+              </h3>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                {isArabic
+                  ? 'ميزة "اختر مسارك" تستخدم الذكاء الاصطناعي لنسج مسارات جديدة وأصوات وصور فريدة لكل قارئ. يرجى تسجيل الدخول مجاناً للبدء.'
+                  : 'The "Choose Your Path" feature uses generative AI to weave custom scenes, voices, and artwork. Please log in for free to start.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3 justify-center pt-2">
+              <button
+                onClick={() => {
+                  onClose();
+                  if (openAuthModal) openAuthModal('login');
+                }}
+                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-sm shadow-xl shadow-amber-500/20 transition-all transform hover:scale-105"
+              >
+                {isArabic ? 'تسجيل الدخول / إنشاء حساب مجاني' : 'Log In / Create Free Account'}
+              </button>
+              <button
+                onClick={onClose}
+                className="px-5 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm transition-colors"
+              >
+                {isArabic ? 'متابعة القراءة العادية' : 'Continue Standard Reading'}
+              </button>
+            </div>
+          </div>
+        ) : loadingChoices ? (
           <div className="py-20 flex flex-col items-center justify-center space-y-4 text-center">
             <div className="relative">
               <div className="w-16 h-16 rounded-full border-4 border-amber-500/20 border-t-amber-500 animate-spin" />

@@ -23,7 +23,6 @@ async function callGeminiApi({ prompt, temperature = 0.4 }) {
 
   const models = [
     'gemini-3.8-flash',
-    'gemini-3.7-flash',
     'gemini-flash-latest',
     'gemini-2.5-flash'
   ];
@@ -106,21 +105,28 @@ async function callGeminiApi({ prompt, temperature = 0.4 }) {
 
 /**
  * Generate 2 contrasting Choose-Your-Own-Adventure branch options
- * for the current slide context.
+ * strictly tailored to the CURRENT SLIDE content.
  *
  * @param {Object} params
  * @param {string} params.storyTitle - The title of the story
  * @param {Array} params.previousSlides - Array of slides up to the current point
  * @param {number} params.currentSlideIdx - Index of the current slide
+ * @param {Object} params.currentSlide - Direct reference to current slide object
  * @param {string} params.lang - Language code ('ar' or 'en')
  * @returns {Promise<{ choices: Array<{ id: string, titleAr: string, titleEn: string, descriptionAr: string, descriptionEn: string, iconName: string }> }>}
  */
-export async function generateBranchOptions({ storyTitle, previousSlides = [], currentSlideIdx = 0, lang = 'ar' }) {
+export async function generateBranchOptions({ storyTitle, previousSlides = [], currentSlideIdx = 0, currentSlide = null, lang = 'ar' }) {
   const isArabic = lang === 'ar' || /[\u0600-\u06FF]/.test(storyTitle || '');
 
-  // Slice story slides up to current slide index
+  // Resolve current active slide
+  const targetIndex = currentSlideIdx ?? 0;
+  const activeSlide = currentSlide || (Array.isArray(previousSlides) && previousSlides[targetIndex]) || (previousSlides[previousSlides.length - 1]) || null;
+  const currentSceneTitle = activeSlide?.title || `المشهد ${targetIndex + 1}`;
+  const currentSceneText = (activeSlide?.text || '').trim();
+
+  // Slice story slides up to current slide index for background context
   const relevantSlides = Array.isArray(previousSlides) && previousSlides.length > 0
-    ? previousSlides.slice(0, (currentSlideIdx ?? 0) + 1)
+    ? previousSlides.slice(0, targetIndex + 1)
     : [];
 
   const contextSummary = relevantSlides.map((s, idx) => {
@@ -130,18 +136,30 @@ export async function generateBranchOptions({ storyTitle, previousSlides = [], c
   const prompt = `You are an expert children's adventure author and interactive story architect specializing in "Choose-Your-Own-Adventure" (قصص تفاعلية متعددة المسارات).
 
 MISSION:
-Analyze the ongoing story narrative and formulate exactly 2 exciting, contrasting narrative choices for what the protagonist/character does next at this critical turning point.
+Analyze the ongoing story narrative and formulate exactly 2 exciting, contrasting narrative choices for what the character/protagonist does next, DIRECTLY ARISING from the CURRENT SCENE the child reader is currently reading.
 
-CHOICE DESIGN MANDATES:
-1. CONTRAST:
-   - Choice A should represent a bold, exploratory, or action-oriented approach (e.g. venturing into a mysterious glowing cave, investigating an unknown sound, taking the high mountain bridge).
-   - Choice B should represent a clever, gentle, magical, or observant approach (e.g. following a friendly singing bird, deciphering ancient markings, asking an elder forest animal for guidance).
-2. CHILD-FRIENDLY & POSITIVE:
-   - Exciting and wondrous, without gruesome violence or dark horror. Inspires curiosity, problem-solving, and adventure.
-3. BILINGUAL CONTENT:
-   - Both choices MUST have captivating titles and descriptions in both ARABIC (اللغة العربية مع التشكيل المناسب) and ENGLISH.
-4. ICON:
-   - Choose a fitting icon name from this exact list:
+CRITICAL DYNAMIC CONTEXT MANDATE:
+The child reader is currently looking at this exact scene on their screen right now:
+----------------------------------------
+CURRENT SCENE (Slide ${targetIndex + 1}):
+Scene Title: "${currentSceneTitle}"
+Scene Story Text: "${currentSceneText || storyTitle || 'بدايه الرحلة المشوقة'}"
+----------------------------------------
+
+MANDATORY CHOICE DESIGN INSTRUCTIONS:
+1. DEEP RELEVANCE TO CURRENT SCENE:
+   - The 2 choices MUST NOT be generic clichés.
+   - They MUST directly address the specific characters, dilemma, surroundings, and events described in "${currentSceneText}".
+   - For example: if the scene is about making milk in a factory with a friend, choices should be about exploring the farm or helping with cheese making; if it's about an eagle egg hatching with hens, choices should be about trying to flap wings or foraging with the chicks.
+2. CONTRAST:
+   - Choice A: A bold, proactive, energetic, or fast-action response to the situation in the scene.
+   - Choice B: A clever, gentle, observant, friendly, or thoughtful response to the situation in the scene.
+3. CHILD-FRIENDLY & POSITIVE:
+   - Inspires wholesome curiosity, values, kindness, and problem-solving.
+4. BILINGUAL CONTENT & TASHKEEL:
+   - Provide titles and descriptions in both Arabic (اللغة العربية مع التشكيل الكامل للكلمات) and English.
+5. ICON:
+   - Select a fitting icon name from this exact list:
      ${JSON.stringify(VALID_ICONS)}
 
 OUTPUT JSON FORMAT ONLY:
@@ -149,32 +167,31 @@ OUTPUT JSON FORMAT ONLY:
   "choices": [
     {
       "id": "a",
-      "titleAr": "استكشاف الكهف المتلألئ",
-      "titleEn": "Explore the Sparkling Cave",
-      "descriptionAr": "الاقتراب بحذر نحو بريق غريب ينبعث من بين الصخور القديمة.",
-      "descriptionEn": "Approach cautiously toward a strange shimmering glow among the ancient rocks.",
+      "titleAr": "عنوان الخيار الأول المبتكر والمناسب للمشهد بدقة",
+      "titleEn": "Creative Scene-Specific First Choice Title",
+      "descriptionAr": "وصف مشوق لما سيفعله البطل في هذا المسار المتفرع بناء على ما حدث للتو.",
+      "descriptionEn": "Engaging description of what the protagonist will do next.",
       "iconName": "Compass"
     },
     {
       "id": "b",
-      "titleAr": "اتباع الطائر الغريد الذهبي",
-      "titleEn": "Follow the Golden Singing Bird",
-      "descriptionAr": "ملاحقة لحن عذب يتردد بين الأشجار الكثيفة يقود إلى واحة خفية.",
-      "descriptionEn": "Follow a sweet melody echoing through the dense trees leading to a hidden oasis.",
+      "titleAr": "عنوان الخيار الثاني الحكيم والبديل المناسب للمشهد بدقة",
+      "titleEn": "Clever Scene-Specific Second Choice Title",
+      "descriptionAr": "وصف بديل ممتع ومختلف للتعامل مع هذا الموقف بذكاء وحكمة.",
+      "descriptionEn": "Alternative clever path description.",
       "iconName": "Sparkles"
     }
   ]
 }
 
-STORY CONTEXT:
+STORY BACKGROUND:
 Story Title: "${storyTitle || (isArabic ? 'قصة المغامرة' : 'Adventure Story')}"
-Current Slide Index: ${currentSlideIdx}
 <untrusted_story_narrative_context>
-${contextSummary || storyTitle || 'An exciting adventure begins...'}
+${contextSummary || currentSceneText || storyTitle}
 </untrusted_story_narrative_context>`;
 
   try {
-    const result = await callGeminiApi({ prompt, temperature: 0.45 });
+    const result = await callGeminiApi({ prompt, temperature: 0.5 });
 
     if (result && Array.isArray(result.choices) && result.choices.length >= 2) {
       const sanitizedChoices = result.choices.slice(0, 2).map((c, i) => {
@@ -195,36 +212,60 @@ ${contextSummary || storyTitle || 'An exciting adventure begins...'}
       return { choices: sanitizedChoices };
     }
   } catch (err) {
-    console.warn(`[AI Branching Service] Gemini options generation fell back to defaults: ${err.message}`);
+    console.warn(`[AI Branching Service] Gemini options generation fell back to contextual defaults: ${err.message}`);
   }
 
-  // Graceful fallback choices if API fails
-  return generateFallbackBranchOptions({ storyTitle, lang });
+  // Contextual fallback choices if API fails
+  return generateFallbackBranchOptions({ storyTitle, currentSceneText, currentSceneTitle, lang });
 }
 
 /**
- * Generate fallback branch choices when Gemini is offline or unavailable
+ * Generate contextual fallback branch choices derived from the current scene
  */
-export function generateFallbackBranchOptions({ storyTitle = '', lang = 'ar' }) {
-  const isArabic = lang === 'ar' || /[\u0600-\u06FF]/.test(storyTitle || '');
+export function generateFallbackBranchOptions({ storyTitle = '', currentSceneText = '', currentSceneTitle = '', lang = 'ar' }) {
+  const isArabic = lang === 'ar' || /[\u0600-\u06FF]/.test(storyTitle || currentSceneText);
+  const snippet = (currentSceneText || currentSceneTitle || storyTitle).slice(0, 35).trim();
+
+  if (isArabic) {
+    return {
+      choices: [
+        {
+          id: 'a',
+          titleAr: snippet ? `مُوَاصَلَةُ اسْتِكْشَافِ (${snippet}...)` : 'خَوْضُ تَجْرِبَةٍ جَدِيدَةٍ وَشُجَاعَةٍ',
+          titleEn: 'Bold Exploration Path',
+          descriptionAr: 'الِانْطِلَاقُ لِمَعْرِفَةِ مَا يَخْتَبِئُ وَرَاءَ هَذَا المَوْقِفِ بِعَزِيمَةٍ وَحَمَاسٍ.',
+          descriptionEn: 'Venture forward to uncover what lies ahead with boldness and courage.',
+          iconName: 'Compass'
+        },
+        {
+          id: 'b',
+          titleAr: snippet ? `التَّفْكِيرُ فِي حَلٍّ ذَكِيٍّ لِـ (${snippet}...)` : 'التَّأَمُّلُ وَاتِّبَاعُ الحِكْمَةِ',
+          titleEn: 'Clever & Thoughtful Path',
+          descriptionAr: 'التَّأَنِّي وَطَلَبُ النَّصِيحَةِ وَالبَحْثُ عَنْ إِشَارَاتٍ سِحْرِيَّةٍ تُسَاعِدُ فِي الرِّحْلَةِ.',
+          descriptionEn: 'Pause to look for clever clues and helpful guidance on the journey.',
+          iconName: 'Lightbulb'
+        }
+      ]
+    };
+  }
 
   return {
     choices: [
       {
         id: 'a',
-        titleAr: 'اسْتِكْشَافُ المَسَارِ المَجْهُولِ',
-        titleEn: 'Explore the Mysterious Path',
-        descriptionAr: 'التَّقَدُّمُ بِشَجَاعَةٍ نَحْوَ المَمَرِّ السِّرِّيِّ المَلِيءِ بِالأَلْغَازِ وَالمُفَاجَآتِ.',
-        descriptionEn: 'Venture courageously toward the secret pathway filled with puzzles and surprises.',
+        titleAr: 'اسْتِكْشَافُ المَسَارِ الجَرِيءِ',
+        titleEn: snippet ? `Investigate further (${snippet}...)` : 'Bold Action Path',
+        descriptionAr: 'الاقتراب بحماس واستكشاف ما سيحدث بعد ذلك.',
+        descriptionEn: 'Take decisive action to explore the unfolding scene.',
         iconName: 'Compass'
       },
       {
         id: 'b',
-        titleAr: 'اتِّبَاعُ النُّورِ السِّحْرِيِّ وَالدَّلِيلِ',
-        titleEn: 'Follow the Magical Light & Clues',
-        descriptionAr: 'تَتَبُّعُ ضَوْءٍ بَرَّاقٍ يَرْسُمُ طَرِيقًا آمِنًا وَيَفْتَحُ أَبْوَابَ الحِكْمَةِ.',
-        descriptionEn: 'Follow a shimmering light that maps a safe trail and opens doors of wisdom.',
-        iconName: 'Sparkles'
+        titleAr: 'اخْتِيَارُ الحِكْمَةِ وَالمُرَاقَبَةِ',
+        titleEn: snippet ? `Observe carefully (${snippet}...)` : 'Thoughtful Path',
+        descriptionAr: 'المراقبة بحذر والبحث عن حل ذكي ومبتكر.',
+        descriptionEn: 'Step back to observe carefully and find a clever solution.',
+        iconName: 'Lightbulb'
       }
     ]
   };

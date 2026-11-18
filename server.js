@@ -2805,13 +2805,17 @@ app.post('/api/stories/:id/branches/generate-choices', authenticateUser, async (
     let previousSlides = [];
     let targetLang = lang;
 
+    let currentSlide = null;
+
     if (story) {
       targetLang = targetLang || story.lang || 'ar';
       storyTitle = (typeof story.name === 'object' && story.name ? (story.name[targetLang] || story.name.ar || story.name.en) : story.name) || story.title || '';
       previousSlides = (story.slides || []).slice(0, targetIndex + 1);
+      currentSlide = story.slides?.[targetIndex] || null;
     } else {
       storyTitle = req.body.storyTitle || req.body.title || 'Adventure Story';
       previousSlides = Array.isArray(req.body.slides) ? req.body.slides.slice(0, targetIndex + 1) : [];
+      currentSlide = req.body.currentSlide || (Array.isArray(req.body.slides) ? req.body.slides[targetIndex] : null);
       targetLang = targetLang || req.body.lang || 'ar';
     }
 
@@ -2819,6 +2823,7 @@ app.post('/api/stories/:id/branches/generate-choices', authenticateUser, async (
       storyTitle,
       previousSlides,
       currentSlideIdx: targetIndex,
+      currentSlide,
       lang: targetLang
     });
 
@@ -2826,6 +2831,7 @@ app.post('/api/stories/:id/branches/generate-choices', authenticateUser, async (
       success: true,
       storyId,
       slideIndex: targetIndex,
+      currentSceneTitle: currentSlide?.title || '',
       choices: branchData.choices
     });
   } catch (err) {
