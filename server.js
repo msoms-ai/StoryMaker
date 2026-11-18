@@ -36,9 +36,15 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Ensure uploads directory exists
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
 // Secure document upload (PDF, TXT) with 10MB limit and strict MIME validation
 const upload = multer({
-  dest: 'uploads/',
+  dest: UPLOADS_DIR,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB maximum limit
   fileFilter: documentFileFilter
 });

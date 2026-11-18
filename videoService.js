@@ -12,9 +12,11 @@ dotenv.config();
 // Configure explicit paths to bundled ffmpeg and ffprobe binaries
 try {
   if (ffmpegInstaller && ffmpegInstaller.path) {
+    try { fs.chmodSync(ffmpegInstaller.path, 0o755); } catch (_) {}
     ffmpeg.setFfmpegPath(ffmpegInstaller.path);
   }
   if (ffprobeInstaller && ffprobeInstaller.path) {
+    try { fs.chmodSync(ffprobeInstaller.path, 0o755); } catch (_) {}
     ffmpeg.setFfprobePath(ffprobeInstaller.path);
   }
 } catch (e) {
