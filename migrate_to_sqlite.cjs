@@ -1,4 +1,14 @@
-const Database = require('better-sqlite3');
+let Database;
+try {
+  Database = require('better-sqlite3');
+} catch (_) {
+  try {
+    Database = require('node:sqlite').DatabaseSync;
+  } catch (e) {
+    console.log('Native SQLite module not available. The application will use the High-Performance In-Memory Indexed Engine with JSON persistence automatically.');
+    process.exit(0);
+  }
+}
 const fs = require('fs');
 const path = require('path');
 
