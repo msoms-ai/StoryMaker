@@ -53,7 +53,74 @@ function resolveVoiceSelection(lang, voiceGender = 'male', voiceRole = null) {
 }
 
 /**
- * Generate Voice Narration Audio exclusively using Google Cloud Neural2 TTS API
+ * Build Expressive SSML with Punctuation-Aware Pauses, Dialogue Pitch Shifts, and Sync Marks
+ */
+export function buildExpressiveSSML(text, { lang = 'ar' } = {}) {
+  const words = (text || '').trim().split(/\s+/).map(w => w.trim()).filter(w => w.length > 0);
+  let ssml = '<speak>';
+  let inDialogue = false;
+  const wordMeta = [];
+
+  for (let idx = 0; idx < words.length; idx++) {
+    const rawWord = words[idx];
+    const isQuoteStart = /^[«"“'\(]/.test(rawWord);
+    const isQuoteEnd = /[»"”'\)]$/.test(rawWord);
+
+    // Open dialogue prosody if entering quoted speech
+    if (isQuoteStart && !inDialogue) {
+      inDialogue = true;
+      ssml += '<prosody pitch="+1.5st" rate="98%">';
+    }
+
+    const safeWord = rawWord
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    ssml += `<mark name="${idx}"/> ${safeWord} `;
+
+    let pauseMs = 0;
+    if (/[،,]/.test(rawWord)) {
+      pauseMs = 260; // Natural breath on comma
+      ssml += `<break time="${pauseMs}ms"/> `;
+    } else if (/[:：]/.test(rawWord)) {
+      pauseMs = 320; // Pause before dialogue
+      ssml += `<break time="${pauseMs}ms"/> `;
+    } else if (/[؛;]/.test(rawWord)) {
+      pauseMs = 360; // Moderate pause on semicolon
+      ssml += `<break time="${pauseMs}ms"/> `;
+    } else if (/[.!?؟!]/.test(rawWord)) {
+      pauseMs = 520; // Full pause on sentence end
+      if (isQuoteEnd && inDialogue) {
+        ssml += '</prosody>';
+        inDialogue = false;
+      }
+      ssml += `<break time="${pauseMs}ms"/> `;
+    } else if (isQuoteEnd && inDialogue) {
+      ssml += '</prosody>';
+      inDialogue = false;
+    }
+
+    // Strip Arabic diacritics for character duration weighting
+    const cleanChars = rawWord.replace(/[\u064B-\u065F\u0670]/g, '').length || 1;
+    wordMeta.push({
+      index: idx,
+      word: rawWord,
+      charCount: cleanChars,
+      pauseMs
+    });
+  }
+
+  if (inDialogue) {
+    ssml += '</prosody>';
+  }
+  ssml += '</speak>';
+
+  return { ssml, words, wordMeta };
+}
+
+/**
+ * Generate Voice Narration Audio exclusively using Google Cloud Chirp3-HD TTS API
  */
 export async function generateAndSaveSlideVoice({
   slideText,
@@ -64,29 +131,17 @@ export async function generateAndSaveSlideVoice({
   voiceRole = null
 }) {
   const selectedVoice = resolveVoiceSelection(lang, voiceGender, voiceRole);
-  console.log(`[AI Voice Service] Generating Voice Narration for Slide ${slideIndex + 1} (${selectedVoice.name}, role: ${voiceRole || voiceGender})...`);
+  console.log(`[AI Voice Service] Generating Expressive Voice Narration for Slide ${slideIndex + 1} (${selectedVoice.name}, role: ${voiceRole || voiceGender})...`);
   
   const fileName = `slide_${slideIndex + 1}.mp3`;
   const filePath = path.join(outputDir, fileName);
   const timepointsFileName = `slide_${slideIndex + 1}_timepoints.json`;
   const timepointsFilePath = path.join(outputDir, timepointsFileName);
 
-  // Split into words cleanly and wrap each with a mark tag
-  // Trim words properly so word indices align cleanly with frontend timepoints
-  const words = (slideText || '').trim().split(/\s+/).map(w => w.trim()).filter(w => w.length > 0);
-  let ssmlText = '<speak>';
-  words.forEach((word, idx) => {
-    // Only escape XML special characters (&, <, >) to avoid breaking apostrophes (don't, it's) or quotes in English words
-    const safeWord = word
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    ssmlText += `<mark name="${idx}"/> ${safeWord} `;
-  });
-  ssmlText += '</speak>';
+  const { ssml, words, wordMeta } = buildExpressiveSSML(slideText, { lang });
 
   const request = {
-    input: { ssml: ssmlText },
+    input: { ssml },
     voice: {
       languageCode: selectedVoice.languageCode,
       name: selectedVoice.name
@@ -139,12 +194,31 @@ export async function generateAndSaveSlideVoice({
 
     fs.writeFileSync(filePath, response.audioContent, 'binary');
     
-    // Save the timepoints data
-    if (response.timepoints && response.timepoints.length > 0) {
-      fs.writeFileSync(timepointsFilePath, JSON.stringify(response.timepoints, null, 2));
+    // Save or synthesize exact timepoints for the frontend karaoke reading guide
+    let finalTimepoints = response.timepoints;
+    if (!finalTimepoints || finalTimepoints.length === 0) {
+      // Synthesize character-weighted and pause-adjusted timepoints from audio buffer length
+      const estDurationSec = Math.max(1, response.audioContent.length / 4000);
+      const totalChars = wordMeta.reduce((sum, w) => sum + w.charCount, 0) || 1;
+      const totalPauseMs = wordMeta.reduce((sum, w) => sum + w.pauseMs, 0);
+      const totalSpeechSec = Math.max(0.5, estDurationSec - (totalPauseMs / 1000));
+
+      let currentSec = 0;
+      finalTimepoints = [];
+
+      for (const w of wordMeta) {
+        finalTimepoints.push({
+          markName: String(w.index),
+          timeSeconds: parseFloat(currentSec.toFixed(3))
+        });
+        const wordDur = (w.charCount / totalChars) * totalSpeechSec;
+        currentSec += wordDur + (w.pauseMs / 1000);
+      }
     }
+
+    fs.writeFileSync(timepointsFilePath, JSON.stringify(finalTimepoints, null, 2));
     
-    console.log(`[AI Voice Service] Successfully saved Chirp3-HD AI Voiceover and Timepoints: ${fileName}`);
+    console.log(`[AI Voice Service] Successfully saved Chirp3-HD Expressive Voiceover (${response.audioContent.length} bytes) and Timepoints: ${fileName}`);
     return fileName;
   } catch (err) {
     console.error(`[AI Voice Service] Google Cloud TTS error for Slide ${slideIndex + 1}: ${err.message}`);
