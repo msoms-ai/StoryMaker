@@ -617,52 +617,58 @@ app.post('/api/auth/resend-otp', async (req, res) => {
 
 // POST /api/auth/login
 app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ success: false, message: 'Email and password are required' });
-  }
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password are required' });
+    }
 
-  const db = readDB();
-  const normalizedEmail = email.trim().toLowerCase();
-  const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
+    const db = readDB();
+    const users = db.users || [];
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = users.find(u => u && u.email && u.email.toLowerCase() === normalizedEmail);
 
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid email or password' });
-  }
+    if (!user || !user.passwordHash) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
 
-  const isMatch = bcrypt.compareSync(password, user.passwordHash);
-  if (!isMatch) {
-    return res.status(401).json({ success: false, message: 'Invalid email or password' });
-  }
+    const isMatch = bcrypt.compareSync(password, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
 
-  if (!user.isVerified) {
-    return res.status(403).json({
-      success: false,
-      unverified: true,
-      email: user.email,
-      message: 'Your email is not verified yet. Please enter the 4-digit code sent to your email.'
+    if (!user.isVerified) {
+      return res.status(403).json({
+        success: false,
+        unverified: true,
+        email: user.email,
+        message: 'Your email is not verified yet. Please enter the 4-digit code sent to your email.'
+      });
+    }
+
+    if (user.status === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        suspended: true,
+        message: 'Your account has been deactivated or suspended. Please contact platform administration.'
+      });
+    }
+
+    user.lastLoginAt = new Date().toISOString();
+    writeDB(db);
+
+    const token = generateToken(user);
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: sanitizeUser(user)
     });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ success: false, message: 'Authentication error occurred' });
   }
-
-  if (user.status === 'suspended') {
-    return res.status(403).json({
-      success: false,
-      suspended: true,
-      message: 'Your account has been deactivated or suspended. Please contact platform administration.'
-    });
-  }
-
-  user.lastLoginAt = new Date().toISOString();
-  writeDB(db);
-
-  const token = generateToken(user);
-  res.json({
-    success: true,
-    message: 'Login successful',
-    token,
-    user: sanitizeUser(user)
-  });
 });
 
 // POST /api/auth/forgot-password (Anti-user-enumeration compliant)
@@ -1522,22 +1528,34 @@ app.post('/api/packages/checkout', authenticateUser, (req, res) => {
 
 // GET /api/settings - Public settings (font, site name, maintenance)
 app.get('/api/settings', (req, res) => {
-  const db = readDB();
-  res.json({ success: true, settings: db.settings });
+  try {
+    const db = readDB();
+    res.json({ success: true, settings: db.settings || {} });
+  } catch (err) {
+    console.error('Settings error:', err);
+    res.status(500).json({ success: false, message: err.message, settings: {} });
+  }
 });
 
 // GET /api/statistics - Public statistics
 app.get('/api/statistics', (req, res) => {
-  const db = readDB();
-  const totalStories = db.stories.length;
-  const totalSlides = db.stories.reduce((acc, story) => acc + (story.slidesCount || story.slides?.length || 0), 0);
-  const totalUsers = db.users.length;
-  const totalAiGeneratedStories = db.stories.filter(s => s.isAiGenerated === true).length;
-  const totalConvertedStories = totalStories - totalAiGeneratedStories;
-  // Estimate 15 seconds of voice per slide (15/60 = 0.25 minutes)
-  const totalMinutesVoice = Math.round(totalSlides * 0.25);
-  
-  res.json({ success: true, stats: { totalStories, totalSlides, totalUsers, totalAiGeneratedStories, totalConvertedStories, totalMinutesVoice } });
+  try {
+    const db = readDB();
+    const stories = db.stories || [];
+    const users = db.users || [];
+    const totalStories = stories.length;
+    const totalSlides = stories.reduce((acc, story) => acc + (story.slidesCount || story.slides?.length || 0), 0);
+    const totalUsers = users.length;
+    const totalAiGeneratedStories = stories.filter(s => s.isAiGenerated === true).length;
+    const totalConvertedStories = totalStories - totalAiGeneratedStories;
+    // Estimate 15 seconds of voice per slide (15/60 = 0.25 minutes)
+    const totalMinutesVoice = Math.round(totalSlides * 0.25);
+    
+    res.json({ success: true, stats: { totalStories, totalSlides, totalUsers, totalAiGeneratedStories, totalConvertedStories, totalMinutesVoice } });
+  } catch (err) {
+    console.error('Statistics error:', err);
+    res.status(500).json({ success: false, message: err.message, stats: { totalStories: 0, totalSlides: 0, totalUsers: 0 } });
+  }
 });
 
 // GET /api/admin/settings - Admin settings
@@ -3284,17 +3302,6 @@ app.get('/api/stories/:id/slides/:slideIdx/hotspots', async (req, res) => {
   }
 });
 
-// Serve Frontend
-const distPath = path.join(__dirname, 'dist');
-app.use(express.static(distPath));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
-});
-
-app.listen(PORT, () => {
-  console.log(`Qisas Backend Server listening on http://localhost:${PORT}`);
-});
-
 // POST /api/feedback
 app.post('/api/feedback', async (req, res) => {
   const { name, email, type, message } = req.body;
@@ -3308,4 +3315,31 @@ app.post('/api/feedback', async (req, res) => {
     console.error('Feedback email error:', err);
     res.status(500).json({ success: false, message: 'Failed to send feedback' });
   }
+});
+
+// Serve Frontend Static Files
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
+app.get('*', (req, res) => {
+  const indexFile = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexFile)) {
+    res.sendFile(indexFile);
+  } else {
+    res.status(200).send('<html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2>Qisas Platform Starting Up...</h2><p>Please refresh in a few moments.</p></body></html>');
+  }
+});
+
+// Global Central Error Handler (Ensures all errors return clean JSON and never crash the process)
+app.use((err, req, res, next) => {
+  console.error(`[Server Error] ${req.method} ${req.url}:`, err);
+  if (!res.headersSent) {
+    res.status(500).json({
+      success: false,
+      message: err?.message || 'Internal Server Error'
+    });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Qisas Backend Server listening on port ${PORT}`);
 });
