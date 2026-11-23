@@ -2880,15 +2880,16 @@ app.post('/api/stories/:id/branches/select-choice', authenticateUser, async (req
     let targetLang = lang;
     let folderName = '';
 
+    const targetIndex = slideIndex !== undefined ? parseInt(slideIndex, 10) : ((story?.slides?.length || 1) - 1);
+
     if (story) {
       targetLang = targetLang || story.lang || 'ar';
       storyTitle = (typeof story.name === 'object' && story.name ? (story.name[targetLang] || story.name.ar || story.name.en) : story.name) || story.title || '';
-      const targetIndex = slideIndex !== undefined ? slideIndex : (story.slides.length - 1);
       previousSlides = (story.slides || []).slice(0, targetIndex + 1);
       folderName = story.folderName;
     } else {
       storyTitle = req.body.storyTitle || req.body.title || 'Adventure Story';
-      previousSlides = Array.isArray(req.body.slides) ? req.body.slides : [];
+      previousSlides = Array.isArray(req.body.slides) ? req.body.slides.slice(0, targetIndex + 1) : [];
       targetLang = targetLang || req.body.lang || 'ar';
       folderName = req.body.folderName || '';
     }
@@ -2901,15 +2902,20 @@ app.post('/api/stories/:id/branches/select-choice', authenticateUser, async (req
       lang: targetLang
     });
 
-    const nextSlideIdx = previousSlides.length;
+    const newSlideIdx = previousSlides.length;
+    const branchTimestamp = Date.now();
+    const branchImgName = `slide_branch_${newSlideIdx + 1}_${branchTimestamp}.png`;
+    const branchVoiceName = `slide_branch_${newSlideIdx + 1}_${branchTimestamp}.mp3`;
+
     let imageFile = '';
     let voiceFile = '';
+    let hotspots = [];
 
-    // 2. Try generating image & voice if story has an output folder
+    // 2. Generate fresh image, voice, and visual vocabulary hotspots
     if (folderName) {
       const storyFolderPath = path.join(STORIES_DIR, folderName);
       if (fs.existsSync(storyFolderPath)) {
-        // Attempt image generation
+        // A. Generate Fresh Unique Slide Image
         try {
           const imgDir = path.join(storyFolderPath, 'story_images');
           if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
@@ -2917,44 +2923,79 @@ app.post('/api/stories/:id/branches/select-choice', authenticateUser, async (req
             slideText: branchScene.text,
             storyTitle,
             category: story?.category || 'adventure',
-            slideIndex: nextSlideIdx,
+            slideIndex: newSlideIdx,
             characters: story?.characters || [],
             outputDir: imgDir,
             lang: targetLang,
-            artStyle: story?.artStyle || 'Colored Pencil'
+            artStyle: story?.artStyle || 'Colored Pencil',
+            customFilename: branchImgName
           });
           imageFile = `/STORIES/${encodeURIComponent(folderName)}/story_images/${savedImgFilename}`;
         } catch (imgErr) {
-          console.warn('[Branch Select] Notice generating image for branch slide:', imgErr.message);
-          const prevImg = previousSlides[previousSlides.length - 1]?.imageFile;
-          imageFile = prevImg || '';
+          console.warn('[Branch Select] Error generating image for branch slide, creating distinct branch canvas:', imgErr.message);
+          try {
+            const imgDir = path.join(storyFolderPath, 'story_images');
+            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="680" viewBox="0 0 960 680">
+              <defs>
+                <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#1e1b4b" />
+                  <stop offset="50%" stop-color="#312e81" />
+                  <stop offset="100%" stop-color="#4338ca" />
+                </linearGradient>
+                <radialGradient id="sun" cx="50%" cy="40%" r="50%">
+                  <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.9" />
+                  <stop offset="100%" stop-color="#f59e0b" stop-opacity="0" />
+                </radialGradient>
+              </defs>
+              <rect width="960" height="680" fill="url(#bg)" />
+              <circle cx="480" cy="260" r="180" fill="url(#sun)" />
+              <path d="M0,520 Q240,460 480,500 T960,480 L960,680 L0,680 Z" fill="#1e293b" />
+              <path d="M0,560 Q300,510 600,540 T960,530 L960,680 L0,680 Z" fill="#0f172a" />
+              <text x="480" y="320" font-family="sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">${branchScene.title || 'مسار المغامرة الجديد'}</text>
+            </svg>`;
+            fs.writeFileSync(path.join(imgDir, branchImgName), Buffer.from(svgContent));
+            imageFile = `/STORIES/${encodeURIComponent(folderName)}/story_images/${branchImgName}`;
+          } catch (svgErr) {
+            imageFile = previousSlides[previousSlides.length - 1]?.imageFile || '';
+          }
         }
 
-        // Attempt voice generation
+        // B. Generate Fresh Unique Slide Voice
         try {
           const voiceDir = path.join(storyFolderPath, 'story_voice');
           if (!fs.existsSync(voiceDir)) fs.mkdirSync(voiceDir, { recursive: true });
           const savedVoiceFilename = await generateAndSaveSlideVoice({
             slideText: branchScene.text,
-            slideIndex: nextSlideIdx,
+            slideIndex: newSlideIdx,
             outputDir: voiceDir,
             lang: targetLang,
-            voiceGender: 'male'
+            voiceGender: 'male',
+            customFilename: branchVoiceName
           });
           voiceFile = `/STORIES/${encodeURIComponent(folderName)}/story_voice/${savedVoiceFilename}`;
         } catch (voiceErr) {
           console.warn('[Branch Select] Notice generating voice for branch slide:', voiceErr.message);
         }
+
+        // C. Generate Fresh Visual Vocabulary Hotspots on the new image
+        try {
+          hotspots = await extractSlideVocabularyHotspots({
+            imagePath: imageFile,
+            slideText: branchScene.text,
+            lang: targetLang
+          });
+        } catch (hErr) {
+          console.warn('[Branch Select] Hotspots extraction notice:', hErr.message);
+        }
       }
     }
 
-    // Fall back to previous slide's image if still empty
     if (!imageFile && previousSlides.length > 0) {
       imageFile = previousSlides[previousSlides.length - 1].imageFile || '';
     }
 
     const newSlide = {
-      index: nextSlideIdx,
+      index: newSlideIdx,
       title: branchScene.title,
       text: branchScene.text,
       imageFile,
@@ -2964,23 +3005,27 @@ app.post('/api/stories/:id/branches/select-choice', authenticateUser, async (req
       voiceRole: branchScene.voiceRole || 'narrator_male',
       isBranchChoice: true,
       choiceOrigin: (choice?.id || choiceId || 'a'),
-      choiceTitle: choice?.titleAr || choice?.titleEn || choice?.title || ''
+      choiceTitle: choice?.titleAr || choice?.titleEn || choice?.title || '',
+      hotspots: Array.isArray(hotspots) && hotspots.length > 0 ? hotspots : []
     };
 
-    // 3. Keep original canonical story in database 100% pristine and untouched!
-    // The branched scene is returned to the active client reader session so the reader enjoys
-    // their custom path in real-time without modifying or bloating the author's master copy.
+    // The old ending is replaced by the new branched continuation
+    const newSlides = [...previousSlides, newSlide];
+
     const sessionStory = story ? {
       ...story,
-      slides: [...(story.slides || []), newSlide],
-      slidesCount: (story.slides?.length || 0) + 1
+      slides: newSlides,
+      slidesCount: newSlides.length,
+      hasBranched: true
     } : null;
 
     res.json({
       success: true,
       newSlide,
+      newSlides,
       story: sessionStory,
-      slideIndex: nextSlideIdx
+      slideIndex: newSlideIdx,
+      hasBranched: true
     });
   } catch (err) {
     console.error('[API /api/stories/:id/branches/select-choice Error]:', err);
@@ -2990,7 +3035,6 @@ app.post('/api/stories/:id/branches/select-choice', authenticateUser, async (req
     });
   }
 });
-
 
 app.post('/api/stories/:id/progress', (req, res) => {
   const { currentSlide, completed, userId } = req.body;

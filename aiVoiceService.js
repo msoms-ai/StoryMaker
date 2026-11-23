@@ -128,14 +128,15 @@ export async function generateAndSaveSlideVoice({
   outputDir,
   lang = 'ar',
   voiceGender = 'male',
-  voiceRole = null
+  voiceRole = null,
+  customFilename = null
 }) {
   const selectedVoice = resolveVoiceSelection(lang, voiceGender, voiceRole);
   console.log(`[AI Voice Service] Generating Expressive Voice Narration for Slide ${slideIndex + 1} (${selectedVoice.name}, role: ${voiceRole || voiceGender})...`);
   
-  const fileName = `slide_${slideIndex + 1}.mp3`;
+  const fileName = customFilename || `slide_${slideIndex + 1}.mp3`;
   const filePath = path.join(outputDir, fileName);
-  const timepointsFileName = `slide_${slideIndex + 1}_timepoints.json`;
+  const timepointsFileName = fileName.replace('.mp3', '_timepoints.json');
   const timepointsFilePath = path.join(outputDir, timepointsFileName);
 
   const { ssml, words, wordMeta } = buildExpressiveSSML(slideText, { lang });

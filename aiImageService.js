@@ -16,7 +16,8 @@ export async function buildGeminiVisualPrompt({
   slideIndex = 0,
   characters = [],
   userFeedback = '',
-  artStyle = 'Colored Pencil'
+  artStyle = 'Colored Pencil',
+  customFilename = null
 }) {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -128,10 +129,11 @@ export async function generateProfileCoverImage(prompt, outputDir) {
  */
 async function generateViaGoogleGemini(prompt, apiKey) {
   const models = [
-    'gemini-3.1-flash-image',
-    'nano-banana-pro-preview',
     'gemini-2.5-flash-image',
-    'gemini-3-pro-image'
+    'gemini-3.1-flash-image',
+    'gemini-3-pro-image',
+    'gemini-3.1-flash-lite-image',
+    'gemini-2.5-flash-image-preview'
   ];
 
   let lastError = null;
@@ -237,10 +239,11 @@ export async function generateAndSaveSlideImage({
 
   console.log(`[AI Image Service] Generating Slide ${slideIndex + 1} Image with character consistency...`);
   const buffer = await generateViaGoogleGemini(visualPrompt, apiKey);
-  const filePath = path.join(outputDir, `slide_${slideIndex + 1}.png`);
+  const fileName = customFilename || `slide_${slideIndex + 1}.png`;
+  const filePath = path.join(outputDir, fileName);
   fs.writeFileSync(filePath, buffer);
-  console.log(`[AI Image Service] Successfully saved Gemini AI image: slide_${slideIndex + 1}.png (${buffer.length} bytes)`);
-  return `slide_${slideIndex + 1}.png`;
+  console.log(`[AI Image Service] Successfully saved Gemini AI image: ${fileName} (${buffer.length} bytes)`);
+  return fileName;
 }
 
 /**

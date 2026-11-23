@@ -352,7 +352,7 @@ export default function BranchingChoiceModal({
 
         // Notify parent reader
         if (onChoiceSelected) {
-          onChoiceSelected(data.newSlide, chosenChoice);
+          onChoiceSelected(data.newSlide, chosenChoice, data.newSlides);
         }
 
         setTimeout(() => {

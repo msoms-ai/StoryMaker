@@ -30,12 +30,19 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   const [isColoringModalOpen, setIsColoringModalOpen] = useState(false);
   const [isToolsDropdownOpen, setIsToolsDropdownOpen] = useState(false);
   const [userBestQuizScore, setUserBestQuizScore] = useState(null);
+  const [hasBranched, setHasBranched] = useState(false);
   
   const lastSlideTimeRef = useRef(Date.now());
   const maxReachedSlideRef = useRef(0);
 
   // Protected AI Feature Handlers (Require Login)
   const handleOpenBranchModal = () => {
+    if (hasBranched || currentSlide?.isBranchChoice) {
+      setToastMessage(lang === 'ar' ? 'تم اختيار مسار هذه المغامرة بالفعل' : 'An adventure path has already been chosen for this story');
+      setShowToastNotice(true);
+      setTimeout(() => setShowToastNotice(false), 3500);
+      return;
+    }
     if (!user) {
       if (openAuthModal) openAuthModal('login');
       setToastMessage(lang === 'ar' ? 'يرجى تسجيل الدخول لتجربة مسارات القصة التفاعلية بالذكاء الاصطناعي' : 'Please sign in to experience AI interactive story branching');
@@ -73,6 +80,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
       .then((data) => {
         if (data.success && data.story) {
           setStory(data.story);
+          setHasBranched(Boolean(data.story?.hasBranched || data.story?.slides?.some(s => s.isBranchChoice)));
           const userProg = user ? data.story.userProgress?.[user.id] : null;
           const initialSlide = userProg?.currentSlide ?? data.story.readProgress?.currentSlide ?? 0;
           setCurrentSlideIdx(initialSlide);
@@ -150,23 +158,31 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
     setCurrentView('landing');
   };
 
-  const handleBranchChoiceSelected = (newSlide, chosenChoice) => {
+  const handleBranchChoiceSelected = (newSlide, chosenChoice, newSlides) => {
     if (!newSlide) return;
+    setHasBranched(true);
+
+    const validPrior = (story?.slides || []).slice(0, currentSlideIdx + 1);
+    const updatedSlides = newSlides && Array.isArray(newSlides) && newSlides.length > 0
+      ? newSlides
+      : [...validPrior, newSlide];
+
+    const targetIdx = currentSlideIdx + 1;
+
     setStory((prev) => {
       if (!prev) return prev;
-      const updatedSlides = [...(prev.slides || []), newSlide];
       return {
         ...prev,
         slides: updatedSlides,
-        slidesCount: updatedSlides.length
+        slidesCount: updatedSlides.length,
+        hasBranched: true
       };
     });
 
     // Advance to the new branched slide smoothly
     setTimeout(() => {
-      const targetIdx = newSlide.index !== undefined ? newSlide.index : (story?.slides?.length || 0);
       maxReachedSlideRef.current = Math.max(maxReachedSlideRef.current, targetIdx);
-      lastSlideTimeRef.current = 0; // Prevent speed-reading throttle on fresh branched slide
+      lastSlideTimeRef.current = 0;
       setCurrentSlideIdx(targetIdx);
       triggerStarConfetti();
     }, 350);
@@ -248,10 +264,15 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           {/* 2. Choose Your Adventure Branch */}
           <div className="relative group">
             <button
+              disabled={hasBranched || currentSlide?.isBranchChoice}
               onClick={handleOpenBranchModal}
-              className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white flex items-center justify-center shadow-sm hover:scale-110 active:scale-95 transition-all"
-              aria-label={t('toolBranchTitle')}
-              title={t('toolBranchTitle')}
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-sm transition-all ${
+                hasBranched || currentSlide?.isBranchChoice
+                  ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed opacity-60'
+                  : 'bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white hover:scale-110 active:scale-95'
+              }`}
+              aria-label={hasBranched ? (lang === 'ar' ? 'المسار محدد' : 'Path Chosen') : t('toolBranchTitle')}
+              title={hasBranched ? (lang === 'ar' ? 'تم اختيار مسار هذه المغامرة بالفعل' : 'Path already chosen') : t('toolBranchTitle')}
             >
               <Compass className="w-4 h-4 text-amber-100" />
             </button>
@@ -390,8 +411,17 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
                 {/* 2. Choose Your Adventure Branch */}
                 <button
-                  onClick={() => { setIsToolsDropdownOpen(false); handleOpenBranchModal(); }}
-                  className={`w-full p-2.5 rounded-2xl hover:bg-orange-500/10 text-slate-700 dark:text-slate-200 flex items-center gap-3 transition-colors ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+                  disabled={hasBranched || currentSlide?.isBranchChoice}
+                  onClick={() => {
+                    if (hasBranched || currentSlide?.isBranchChoice) return;
+                    setIsToolsDropdownOpen(false);
+                    handleOpenBranchModal();
+                  }}
+                  className={`w-full p-2.5 rounded-2xl flex items-center gap-3 transition-colors ${
+                    hasBranched || currentSlide?.isBranchChoice
+                      ? 'opacity-50 cursor-not-allowed text-slate-400'
+                      : 'hover:bg-orange-500/10 text-slate-700 dark:text-slate-200'
+                  } ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
                 >
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-sm">
                     <Compass className="w-4 h-4" />
@@ -498,10 +528,15 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
 
           {/* 2. Branch */}
           <button
+            disabled={hasBranched || currentSlide?.isBranchChoice}
             onClick={handleOpenBranchModal}
-            className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 text-white flex items-center justify-center shadow-xs active:scale-90 transition-transform"
+            className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-xs transition-transform ${
+              hasBranched || currentSlide?.isBranchChoice
+                ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed opacity-60'
+                : 'bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 text-white active:scale-90'
+            }`}
             aria-label={t('toolBranchTitle')}
-            title={t('toolBranchTitle')}
+            title={hasBranched ? (lang === 'ar' ? 'تم اختيار مسار هذه المغامرة بالفعل' : 'Path already chosen') : t('toolBranchTitle')}
           >
             <Compass className="w-4 h-4 text-amber-100" />
           </button>
@@ -644,12 +679,23 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
             </div>
 
             <button
-              onClick={() => setIsBranchModalOpen(true)}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-amber-500/25 transition-all flex items-center justify-center gap-2 hover:scale-105 active:scale-95 cursor-pointer"
-              title={lang === 'ar' ? 'اختر مسارك (مغامرة تفاعلية Choose-Your-Own-Adventure)' : 'Choose Your Adventure Branch'}
+              disabled={hasBranched || currentSlide?.isBranchChoice}
+              onClick={handleOpenBranchModal}
+              className={`w-full sm:w-auto px-4 py-2 rounded-xl text-white font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
+                hasBranched || currentSlide?.isBranchChoice
+                  ? 'bg-slate-700/60 text-slate-300 cursor-not-allowed opacity-75'
+                  : 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 hover:shadow-amber-500/25 hover:scale-105 active:scale-95 cursor-pointer'
+              }`}
+              title={hasBranched || currentSlide?.isBranchChoice
+                ? (lang === 'ar' ? 'تم اختيار مسار هذه المغامرة بالفعل' : 'Path already chosen')
+                : (lang === 'ar' ? 'اختر مسارك (مغامرة تفاعلية Choose-Your-Own-Adventure)' : 'Choose Your Adventure Branch')}
             >
               <Compass className="w-4 h-4" />
-              <span>{lang === 'ar' ? 'اختر مسارك 🌿' : 'Branch Path 🌿'}</span>
+              <span>
+                {hasBranched || currentSlide?.isBranchChoice
+                  ? (lang === 'ar' ? 'المسار محدد ✓' : 'Path Chosen ✓')
+                  : (lang === 'ar' ? 'اختر مسارك 🌿' : 'Branch Path 🌿')}
+              </span>
             </button>
           </div>
         </div>
