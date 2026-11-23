@@ -584,7 +584,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           <button
             disabled={currentSlideIdx === 0}
             onClick={() => changeSlide(currentSlideIdx - 1)}
-            className={`absolute ${dir === 'rtl' ? 'right-4' : 'left-4'} p-3 rounded-full bg-slate-900/60 hover:bg-slate-900 text-white disabled:opacity-20 transition-all backdrop-blur-md`}
+            className={`absolute ${dir === 'rtl' ? 'right-4' : 'left-4'} p-3 rounded-full bg-slate-900/60 hover:bg-slate-900 text-white disabled:opacity-20 transition-all backdrop-blur-md z-10`}
           >
             {dir === 'rtl' ? <ArrowRight className="w-6 h-6" /> : <ArrowLeft className="w-6 h-6" />}
           </button>
@@ -592,7 +592,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
           <button
             disabled={currentSlideIdx === story.slides.length - 1}
             onClick={() => changeSlide(currentSlideIdx + 1)}
-            className={`absolute ${dir === 'rtl' ? 'left-4' : 'right-4'} p-3 rounded-full bg-slate-900/60 hover:bg-slate-900 text-white disabled:opacity-20 transition-all backdrop-blur-md`}
+            className={`absolute ${dir === 'rtl' ? 'left-4' : 'right-4'} p-3 rounded-full bg-slate-900/60 hover:bg-slate-900 text-white disabled:opacity-20 transition-all backdrop-blur-md z-10`}
           >
             {dir === 'rtl' ? <ArrowLeft className="w-6 h-6" /> : <ArrowRight className="w-6 h-6" />}
           </button>
