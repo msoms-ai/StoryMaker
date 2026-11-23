@@ -47,7 +47,61 @@ class MemoryDatabase {
         console.warn('[Memory Engine] Load warning:', e.message);
       }
     } else {
-      console.warn('[Memory Engine] database.json not found, initializing empty database.');
+      console.warn('[Memory Engine] database.json not found, initializing baseline defaults.');
+      this.seedDefaults();
+    }
+
+    // Ensure baseline admin and categories exist if DB is newly created or empty (e.g. CI/CD test runners)
+    if (this.cache.users.size === 0) {
+      this.seedDefaults();
+    }
+  }
+
+  seedDefaults() {
+    // Default system settings
+    if (!this.cache.settings || Object.keys(this.cache.settings).length === 0) {
+      this.cache.settings = {
+        platformName: 'منصة قصص',
+        allowRegistration: true,
+        defaultUserRole: 'Author',
+        maintenanceMode: false
+      };
+    }
+
+    // Default categories
+    if (this.cache.categories.size === 0) {
+      const defaultCategories = [
+        { id: 'general', name: { ar: 'عام', en: 'General' }, icon: 'BookOpen', color: 'bg-indigo-600 text-white' },
+        { id: 'adventure', name: { ar: 'مغامرات', en: 'Adventure' }, icon: 'Compass', color: 'bg-amber-500 text-white' },
+        { id: 'educational', name: { ar: 'تعليمي', en: 'Educational' }, icon: 'GraduationCap', color: 'bg-emerald-500 text-white' },
+        { id: 'fantasy', name: { ar: 'خيالي', en: 'Fantasy' }, icon: 'Sparkles', color: 'bg-purple-500 text-white' },
+        { id: 'bedtime', name: { ar: 'قبل النوم', en: 'Bedtime' }, icon: 'Moon', color: 'bg-blue-500 text-white' }
+      ];
+      for (const cat of defaultCategories) {
+        this.cache.categories.set(cat.id, cat);
+      }
+    }
+
+    // Default admin user
+    const adminEmail = (process.env.ADMIN_DEFAULT_EMAIL || 'qisas.admin@msoms.ai').toLowerCase().trim();
+    if (!this.cache.usersByEmail.has(adminEmail)) {
+      const defaultAdmin = {
+        id: 'u_admin',
+        email: adminEmail,
+        passwordHash: '$2a$10$abcdefghijklmnopqrstuvwxyz1234567890',
+        firstName: 'مدير',
+        lastName: 'النظام',
+        role: 'Admin',
+        isVerified: true,
+        status: 'active',
+        freeStoriesLeft: 99999,
+        userFolder: 'qisas_admin',
+        createdAt: new Date().toISOString(),
+        mobileNumber: '',
+        socialLinks: { instagram: '', linkedin: '', facebook: '' }
+      };
+      this.cache.users.set(defaultAdmin.id, defaultAdmin);
+      this.cache.usersByEmail.set(adminEmail, defaultAdmin);
     }
   }
 
