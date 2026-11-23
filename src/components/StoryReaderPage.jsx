@@ -34,6 +34,7 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   
   const lastSlideTimeRef = useRef(Date.now());
   const maxReachedSlideRef = useRef(0);
+  const createdBranchFilesRef = useRef([]);
 
   // Protected AI Feature Handlers (Require Login)
   const handleOpenBranchModal = () => {
@@ -64,12 +65,34 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
     setIsReadingCoachOpen(true);
   };
 
-  // Stop ambient soundscape audio when reader unmounts
+  // Stop ambient soundscape audio and clean up ephemeral branch assets when reader unmounts or refreshes
   useEffect(() => {
+    const cleanupBranchFiles = () => {
+      const files = createdBranchFilesRef.current;
+      if (!files || files.length === 0 || !storyId) return;
+      const payload = JSON.stringify({ filenames: files, folderName: story?.folderName });
+      try {
+        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+          navigator.sendBeacon(`/api/stories/${storyId}/branches/cleanup`, new Blob([payload], { type: 'application/json' }));
+        } else {
+          fetch(`/api/stories/${storyId}/branches/cleanup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+          }).catch(() => {});
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('beforeunload', cleanupBranchFiles);
+
     return () => {
       soundscapeManager.stop();
+      window.removeEventListener('beforeunload', cleanupBranchFiles);
+      cleanupBranchFiles();
     };
-  }, []);
+  }, [storyId, story?.folderName]);
 
   // Fetch story data by storyId
   useEffect(() => {
@@ -161,6 +184,13 @@ export default function StoryReaderPage({ storyId, setCurrentView, setViewingUse
   const handleBranchChoiceSelected = (newSlide, chosenChoice, newSlides) => {
     if (!newSlide) return;
     setHasBranched(true);
+
+    if (newSlide.imageFile && newSlide.imageFile.includes('slide_branch_')) {
+      createdBranchFilesRef.current.push(newSlide.imageFile);
+    }
+    if (newSlide.voiceFile && newSlide.voiceFile.includes('slide_branch_')) {
+      createdBranchFilesRef.current.push(newSlide.voiceFile);
+    }
 
     const validPrior = (story?.slides || []).slice(0, currentSlideIdx + 1);
     const updatedSlides = newSlides && Array.isArray(newSlides) && newSlides.length > 0

@@ -98,6 +98,60 @@ function repairAllStoryWavHeaders() {
 }
 repairAllStoryWavHeaders();
 
+// Automatically sweep and purge ephemeral branch assets (images, audio, timepoints) older than maxAgeMs
+export function cleanupOrphanedBranchFiles(maxAgeMs = 6 * 60 * 60 * 1000) {
+  try {
+    if (!fs.existsSync(STORIES_DIR)) return { deletedCount: 0, freedBytes: 0 };
+    const stories = fs.readdirSync(STORIES_DIR);
+    let deletedCount = 0;
+    let freedBytes = 0;
+    const now = Date.now();
+
+    for (const storyFolder of stories) {
+      const folderPath = path.join(STORIES_DIR, storyFolder);
+      try {
+        if (!fs.statSync(folderPath).isDirectory()) continue;
+      } catch (e) {
+        continue;
+      }
+
+      for (const subDir of ['story_images', 'story_voice']) {
+        const targetDir = path.join(folderPath, subDir);
+        if (fs.existsSync(targetDir)) {
+          try {
+            const files = fs.readdirSync(targetDir);
+            for (const file of files) {
+              if (file.startsWith('slide_branch_')) {
+                const filePath = path.join(targetDir, file);
+                try {
+                  const stat = fs.statSync(filePath);
+                  if (now - stat.mtimeMs > maxAgeMs) {
+                    freedBytes += stat.size;
+                    fs.unlinkSync(filePath);
+                    deletedCount++;
+                  }
+                } catch (e) {}
+              }
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    if (deletedCount > 0) {
+      console.log(`[Branch Cleanup] Purged ${deletedCount} ephemeral branch files (${(freedBytes / (1024 * 1024)).toFixed(2)} MB freed).`);
+    }
+    return { deletedCount, freedBytes };
+  } catch (err) {
+    console.warn('[Branch Cleanup] Notice during ephemeral branch sweep:', err.message);
+    return { deletedCount: 0, freedBytes: 0 };
+  }
+}
+
+// Run initial sweep on server start and schedule periodic sweep every 6 hours
+cleanupOrphanedBranchFiles();
+setInterval(() => cleanupOrphanedBranchFiles(), 6 * 60 * 60 * 1000);
+
 // Serve static assets
 app.use('/STORIES', express.static(STORIES_DIR));
 app.use('/USERS', (req, res, next) => {
@@ -3033,6 +3087,58 @@ app.post('/api/stories/:id/branches/select-choice', authenticateUser, async (req
       success: false,
       message: err.message || 'Failed to select branch choice and generate scene'
     });
+  }
+});
+
+// POST /api/stories/:id/branches/cleanup - Immediate cleanup of temporary branch assets upon refresh/navigation
+app.post('/api/stories/:id/branches/cleanup', (req, res) => {
+  try {
+    const { filenames } = req.body || {};
+    const db = readDB();
+    const story = db.stories.find((s) => s.id === req.params.id);
+    const folderName = story?.folderName || req.body?.folderName;
+
+    if (!folderName || !Array.isArray(filenames) || filenames.length === 0) {
+      return res.json({ success: true, deleted: 0 });
+    }
+
+    const storyFolderPath = path.join(STORIES_DIR, folderName);
+    let deleted = 0;
+
+    for (const rawName of filenames) {
+      if (!rawName || typeof rawName !== 'string') continue;
+      const fileName = path.basename(rawName);
+      // Strictly protect canonical assets: only allow deleting slide_branch_* files
+      if (!fileName.startsWith('slide_branch_')) continue;
+
+      const subDir = fileName.endsWith('.png') || fileName.endsWith('.jpg') || fileName.endsWith('.webp')
+        ? 'story_images'
+        : 'story_voice';
+      const filePath = path.join(storyFolderPath, subDir, fileName);
+
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          deleted++;
+        } catch (e) {}
+      }
+
+      // If audio file, also remove associated timepoints JSON
+      if (fileName.endsWith('.mp3')) {
+        const tpPath = path.join(storyFolderPath, 'story_voice', fileName.replace('.mp3', '_timepoints.json'));
+        if (fs.existsSync(tpPath)) {
+          try { fs.unlinkSync(tpPath); } catch (e) {}
+        }
+      }
+    }
+
+    if (deleted > 0) {
+      console.log(`[Branch Cleanup Endpoint] Immediately deleted ${deleted} ephemeral branch files for story: ${folderName}`);
+    }
+    res.json({ success: true, deleted });
+  } catch (err) {
+    console.warn('[Branch Cleanup Endpoint Notice]:', err.message);
+    res.json({ success: true, deleted: 0 });
   }
 });
 
